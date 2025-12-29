@@ -90,7 +90,19 @@ async function findWorktreeHome(startPath: string): Promise<string | null> {
         current = current.split("/").slice(0, -1).join("/") || "/";
     }
 
+
     return null;
+}
+
+/** Check if file exists */
+async function fileExists(path: string): Promise<boolean> {
+    const { stat } = await import("node:fs/promises");
+    try {
+        const s = await stat(path);
+        return s.isFile();
+    } catch {
+        return false;
+    }
 }
 
 // ============================================================================
@@ -308,18 +320,28 @@ async function cmdNew(args: string[]): Promise<void> {
     }
 
     // Install dependencies
-    log("Installing dependencies...");
-    try {
-        await $`bun install --frozen-lockfile`.cwd(targetPath);
-    } catch (e) {
-        warn("Failed to install dependencies. Run 'bun install' manually.");
+    const hasPackageJson = await fileExists(`${targetPath}/package.json`);
+
+    if (hasPackageJson) {
+        log("Installing dependencies...");
+        try {
+            await $`bun install --frozen-lockfile`.cwd(targetPath);
+        } catch (e) {
+            warn("Failed to install dependencies. Run 'bun install' manually.");
+        }
+    } else {
+        log("No package.json found. Skipping dependency installation.");
     }
 
     success(`Worktree created: ${targetDirName}`);
     console.log("");
     console.log("Next steps:");
     console.log(`  cd ../${targetDirName}`);
-    console.log("  bun run dev");
+    if (hasPackageJson) {
+        console.log("  bun run dev");
+    } else {
+        console.log("  <run your project>");
+    }
 }
 
 async function cmdDone(args: string[]): Promise<void> {
@@ -432,6 +454,8 @@ async function cmdDone(args: string[]): Promise<void> {
         }
     }
 
+    success("Worktree and branch removed");
+
     // 5. Cleanup & Sync
     log("Syncing with remote...");
     try {
@@ -441,14 +465,15 @@ async function cmdDone(args: string[]): Promise<void> {
         warn("Failed to sync main branch.");
     }
 
-    log("Syncing dependencies...");
-    try {
-        await $`bun install --frozen-lockfile`.cwd(mainWorktree!);
-    } catch {
-        warn("Failed to install dependencies.");
+    const hasPackageJson = await fileExists(`${mainWorktree!}/package.json`);
+    if (hasPackageJson) {
+        log("Syncing dependencies...");
+        try {
+            await $`bun install --frozen-lockfile`.cwd(mainWorktree!);
+        } catch {
+            warn("Failed to install dependencies.");
+        }
     }
-
-    success("Worktree and branch removed");
 }
 
 async function cmdList(_args: string[]): Promise<void> {
