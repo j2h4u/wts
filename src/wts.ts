@@ -115,7 +115,9 @@ async function findWorktreeHome(startPath: string): Promise<string | null> {
                 // It's a file = feature worktree
                 // Verify we can read it (sanity check)
                 await readFile(gitPath, "utf-8");
-                logger.debug(`Found .git file at ${gitPath} (feature worktree), continuing up`);
+                logger.debug(`Found .git file at ${gitPath} (feature worktree)`);
+                const parentDir = current.split("/").slice(0, -1).join("/");
+                return parentDir || "/";
             }
         } catch {
             // Not found or not accessible
@@ -451,11 +453,23 @@ async function cmdDone(args: string[]): Promise<void> {
         }
     }
 
+    // Find the main worktree (has .git directory)
+    const mainWorktree = await findMainWorktreePath(worktreeHome!);
+    if (!mainWorktree) {
+        logger.error("Could not find main worktree with .git directory.");
+    }
+
     const { stat, readFile, access } = await import("node:fs/promises");
 
     const relPath = targetPath.startsWith(worktreeHome!)
         ? targetPath.slice(worktreeHome!.length + 1)
         : targetPath;
+
+    // Safety: If we are currently INSIDE the target path, we must move out (to main) before deleting it
+    if (cwd.startsWith(targetPath)) {
+        logger.debug(`Currently inside target worktree. Moving to main worktree: ${mainWorktree}`);
+        process.chdir(mainWorktree!);
+    }
 
     // 1. Safety Checks
     try {
@@ -485,25 +499,22 @@ async function cmdDone(args: string[]): Promise<void> {
     }
 
     // Check .env.local diff
-    const mainWorktree = await findMainWorktreePath(worktreeHome!);
-    if (mainWorktree) {
-        const mainEnv = `${mainWorktree}/.env.local`;
-        const targetEnv = `${targetPath}/.env.local`;
+    const mainEnv = `${mainWorktree}/.env.local`;
+    const targetEnv = `${targetPath}/.env.local`;
 
-        try {
-            await stat(targetEnv);
-            await stat(mainEnv);
+    try {
+        await stat(targetEnv);
+        await stat(mainEnv);
 
-            // Compare files
-            const mainContent = await readFile(mainEnv);
-            const targetContent = await readFile(targetEnv);
+        // Compare files
+        const mainContent = await readFile(mainEnv);
+        const targetContent = await readFile(targetEnv);
 
-            if (!mainContent.equals(targetContent)) {
-                logger.warn(".env.local differs from main!");
-            }
-        } catch {
-            // Ignore missing env files
+        if (!mainContent.equals(targetContent)) {
+            logger.warn(".env.local differs from main!");
         }
+    } catch {
+        // Ignore missing env files
     }
 
     // 2. Get branch name
@@ -526,17 +537,23 @@ async function cmdDone(args: string[]): Promise<void> {
 
     // 3. Remove worktree
     await runWithSpinner("Removing worktree", async (spinner) => {
-        await $`git worktree remove ${targetPath}`.cwd(mainWorktree!).quiet();
-        spinner.succeed();
+        try {
+            await runSilent($`git worktree remove ${targetPath}`.cwd(mainWorktree!));
+            spinner.succeed();
+        } catch (e) {
+            spinner.fail("Failed to remove worktree");
+            logger.error(`${e}`);
+        }
     });
 
     // 4. Delete local branch
     if (branchName) {
         await runWithSpinner(`Deleting local branch: ${pc.cyan(branchName)}`, async (spinner) => {
             try {
-                await $`git branch -D ${branchName}`.cwd(mainWorktree!).quiet();
-                spinner.succeed();
+                await runSilent($`git branch -D ${branchName}`.cwd(mainWorktree!));
+                spinner.text = `Deleted branch ${pc.cyan(branchName)}`;
             } catch (e) {
+                // Warning only, as worktree is already gone
                 spinner.warn(`Failed to delete branch ${branchName}`);
             }
         });
@@ -547,11 +564,12 @@ async function cmdDone(args: string[]): Promise<void> {
     // 5. Cleanup & Sync
     await runWithSpinner("Syncing with remote", async (spinner) => {
         try {
-            await $`git fetch --prune`.cwd(mainWorktree!).quiet();
-            await $`git pull --ff-only`.cwd(mainWorktree!).quiet();
+            await runSilent($`git fetch --prune`.cwd(mainWorktree!));
+            await runSilent($`git pull --ff-only`.cwd(mainWorktree!));
             spinner.succeed();
-        } catch {
+        } catch (e) {
             spinner.warn("Failed to sync main branch.");
+            logger.error(`${e}`); // Show error details
         }
     });
 
@@ -559,10 +577,11 @@ async function cmdDone(args: string[]): Promise<void> {
     if (hasPackageJson) {
         await runWithSpinner("Syncing dependencies", async (spinner) => {
             try {
-                await $`bun install --frozen-lockfile`.cwd(mainWorktree!).quiet();
+                await runSilent($`bun install --frozen-lockfile`.cwd(mainWorktree!));
                 spinner.succeed();
-            } catch {
+            } catch (e) {
                 spinner.warn("Failed to install dependencies.");
+                logger.error(`${e}`);
             }
         });
     }
