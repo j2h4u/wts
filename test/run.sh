@@ -3,7 +3,7 @@ set -e
 
 # Build image
 echo "Building Docker image..."
-docker build -t wts-test .
+docker build -t wts-test -f test/Dockerfile .
 
 # Run tests with SSH agent mounted
 echo "Running tests..."

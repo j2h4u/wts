@@ -18,6 +18,7 @@ const YELLOW = "\x1b[1;33m";
 const BLUE = "\x1b[0;34m";
 const CYAN = "\x1b[0;36m";
 const BOLD = "\x1b[1m";
+const GRAY = "\x1b[90m";
 const NC = "\x1b[0m"; // No Color
 
 /** Section header with blue arrow */
@@ -45,7 +46,7 @@ function warn(message: string): void {
 
 function debug(message: string): void {
     if (DEBUG) {
-        console.error(`${CYAN}[DEBUG]${NC} ${message}`);
+        console.error(`${GRAY}[DEBUG]${NC} ${GRAY}${message}${NC}`);
     }
 }
 
@@ -226,9 +227,9 @@ async function cmdClone(args: string[]): Promise<void> {
 
         success(`Repository cloned: ${worktreeHomeName}`);
         console.log("");
-        console.log("Next steps:");
-        console.log(`  cd ${worktreeHomeName}/${defaultBranch}`);
-        console.log("  wts new feature/my-feature");
+        console.log(`${GRAY}Next steps:${NC}`);
+        console.log(`${GRAY}  cd ${worktreeHomeName}/${defaultBranch}${NC}`);
+        console.log(`${GRAY}  wts new feature/my-feature${NC}`);
     } catch (e) {
         // Cleanup on failure
         warn("Clone failed. Cleaning up...");
@@ -330,17 +331,17 @@ async function cmdNew(args: string[]): Promise<void> {
             warn("Failed to install dependencies. Run 'bun install' manually.");
         }
     } else {
-        log("No package.json found. Skipping dependency installation.");
+        console.log(`${GRAY}No package.json found. Skipping dependency installation.${NC}`);
     }
 
     success(`Worktree created: ${targetDirName}`);
     console.log("");
-    console.log("Next steps:");
-    console.log(`  cd ../${targetDirName}`);
+    console.log(`${GRAY}Next steps:${NC}`);
+    console.log(`${GRAY}  cd ../${targetDirName}${NC}`);
     if (hasPackageJson) {
-        console.log("  bun run dev");
+        console.log(`${GRAY}  bun run dev${NC}`);
     } else {
-        console.log("  <run your project>");
+        console.log(`${GRAY}  <run your project>${NC}`);
     }
 }
 
