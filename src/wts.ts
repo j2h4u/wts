@@ -256,8 +256,11 @@ async function cmdClone(args: string[]): Promise<void> {
 }
 
 async function cmdNew(args: string[]): Promise<void> {
-    const branch = args[0];
-    const customDir = args[1];
+    const noPublish = args.includes("--no-publish");
+    const positionalArgs = args.filter((a) => a !== "--no-publish");
+
+    const branch = positionalArgs[0];
+    const customDir = positionalArgs[1];
 
     if (!branch) {
         logger.error("Usage: wts new <branch> [dir]\n\nExample: wts new feature/my-feature");
@@ -328,6 +331,18 @@ async function cmdNew(args: string[]): Promise<void> {
             logger.error(`Failed to create worktree: ${e}`);
         }
     });
+
+    // Publish branch to remote
+    if (!noPublish) {
+        await runWithSpinner("Publishing branch to remote", async (spinner) => {
+            try {
+                await $`git push --set-upstream origin ${branch}`.cwd(targetPath).quiet();
+                spinner.succeed();
+            } catch (e) {
+                spinner.warn("Could not publish branch (check remote permissions).");
+            }
+        });
+    }
 
     // Copy .env.local if it exists
     const mainEnv = `${mainWorktree}/.env.local`;

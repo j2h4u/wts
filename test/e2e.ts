@@ -56,7 +56,7 @@ async function run() {
 
         // 2. Test NEW
         log("Testing 'wts new'...");
-        await $`bun ${wtsPath} new feature/e2e-test`;
+        await $`bun ${wtsPath} new feature/e2e-test --no-publish`;
 
         try {
             await fs.stat(`../feature__e2e-test/.git`);
