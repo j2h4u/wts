@@ -1,6 +1,6 @@
 # wts — Worktree Siblings
 
-> CLI for managing git worktrees — keeps all worktrees as siblings in one folder.
+> Opinionated CLI for managing git worktrees — keeps all worktrees as siblings in one folder.
 
 ## Problem
 

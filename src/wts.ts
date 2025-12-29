@@ -154,9 +154,100 @@ async function cmdClone(args: string[]): Promise<void> {
 }
 
 async function cmdNew(args: string[]): Promise<void> {
-    log("New command");
-    warn("Not implemented yet. See proposal: add-new-command");
-    console.log(`Args: ${args.join(", ") || "(none)"}`);
+    const branch = args[0];
+    const customDir = args[1];
+
+    if (!branch) {
+        error("Usage: wts new <branch> [dir]\n\nExample: wts new feature/my-feature");
+    }
+
+    // Find worktree home from current directory
+    const cwd = process.cwd();
+    const worktreeHome = await findWorktreeHome(cwd);
+
+    if (!worktreeHome) {
+        error("Not inside a worktree home. Run from a wts-managed repository.");
+    }
+
+    // Find the main worktree
+    const mainWorktree = await findMainWorktreePath(worktreeHome);
+    if (!mainWorktree) {
+        error("Could not find main worktree with .git directory.");
+    }
+
+    log(`Creating worktree for branch: ${CYAN}${branch}${NC}`);
+
+    // Check if branch already exists locally
+    try {
+        await $`git show-ref --verify refs/heads/${branch}`.cwd(mainWorktree).quiet();
+        error(`Branch '${branch}' already exists locally.`);
+    } catch {
+        // Branch doesn't exist locally - good
+    }
+
+    // Check if branch exists on remote
+    try {
+        await $`git show-ref --verify refs/remotes/origin/${branch}`.cwd(mainWorktree).quiet();
+        error(`Branch '${branch}' already exists on remote.`);
+    } catch {
+        // Branch doesn't exist on remote - good
+    }
+
+    // Calculate target directory
+    const targetDirName = customDir || branchToDir(branch);
+    const targetPath = `${worktreeHome}/${targetDirName}`;
+
+    // Check if directory already exists
+    const { access } = await import("node:fs/promises");
+    try {
+        await access(targetPath);
+        error(`Directory '${targetDirName}' already exists.`);
+    } catch {
+        // Directory doesn't exist - good
+    }
+
+    // Update main branch first
+    log("Updating main branch...");
+    try {
+        await $`git pull --ff-only`.cwd(mainWorktree);
+    } catch (e) {
+        warn("Could not update main branch. Continuing anyway.");
+    }
+
+    // Create worktree with new branch
+    log(`Creating worktree at ${CYAN}${targetDirName}${NC}...`);
+    try {
+        await $`git worktree add ${targetPath} -b ${branch}`.cwd(mainWorktree);
+    } catch (e) {
+        error(`Failed to create worktree: ${e}`);
+    }
+
+    // Copy .env.local if it exists
+    const mainEnv = `${mainWorktree}/.env.local`;
+    const targetEnv = `${targetPath}/.env.local`;
+    const { copyFile } = await import("node:fs/promises");
+
+    try {
+        await access(mainEnv);
+        log("Copying .env.local from main...");
+        await copyFile(mainEnv, targetEnv);
+    } catch {
+        // No .env.local in main - that's okay
+    }
+
+    // Install dependencies
+    log("Installing dependencies...");
+    try {
+        await $`bun install --frozen-lockfile`.cwd(targetPath);
+    } catch (e) {
+        warn("Failed to install dependencies. Run 'bun install' manually.");
+    }
+
+    success(`Worktree created: ${targetDirName}`);
+    console.log("");
+    console.log("Next steps:");
+    console.log(`  cd ../${targetDirName}`);
+    console.log("  bun run dev");
 }
 
 async function cmdDone(args: string[]): Promise<void> {
@@ -165,9 +256,96 @@ async function cmdDone(args: string[]): Promise<void> {
     console.log(`Args: ${args.join(", ") || "(none)"}`);
 }
 
-async function cmdList(args: string[]): Promise<void> {
-    log("List command");
-    warn("Not implemented yet. See proposal: add-list-command");
+async function cmdList(_args: string[]): Promise<void> {
+    // Find worktree home from current directory
+    const cwd = process.cwd();
+    const worktreeHome = await findWorktreeHome(cwd);
+
+    if (!worktreeHome) {
+        error("Not inside a worktree home. Run from a wts-managed repository.");
+    }
+
+    // Get worktree list from git
+    let output: string;
+    try {
+        // Find the main worktree (has .git directory)
+        const mainWorktree = await findMainWorktreePath(worktreeHome);
+        if (!mainWorktree) {
+            error("Could not find main worktree with .git directory.");
+        }
+        output = await $`git worktree list`.cwd(mainWorktree).text();
+    } catch (e) {
+        error("Failed to list worktrees. Is this a git repository?");
+    }
+
+    // Parse output: /path/to/worktree  abc1234 [branch-name]
+    const lines = output.trim().split("\n").filter(Boolean);
+    const worktrees: { path: string; hash: string; branch: string; isMain: boolean }[] = [];
+
+    for (const line of lines) {
+        const match = line.match(/^(\S+)\s+(\w+)\s+\[(.+)\]$/);
+        if (match) {
+            const [, absPath, hash, branch] = match;
+            const isMain = await isMainWorktree(absPath);
+            const relPath = absPath.startsWith(worktreeHome)
+                ? absPath.slice(worktreeHome.length + 1) || "."
+                : absPath;
+            worktrees.push({ path: relPath, hash, branch, isMain });
+        }
+    }
+
+    if (worktrees.length === 0) {
+        console.log("No worktrees found.");
+        return;
+    }
+
+    // Calculate column widths for alignment
+    const maxPath = Math.max(...worktrees.map((w) => w.path.length));
+    const maxBranch = Math.max(...worktrees.map((w) => w.branch.length));
+
+    // Print header
+    console.log(
+        `${BOLD}${"PATH".padEnd(maxPath)}  ${"BRANCH".padEnd(maxBranch)}  STATUS${NC}`
+    );
+
+    // Print worktrees
+    for (const wt of worktrees) {
+        const status = wt.isMain ? `${GREEN}*${NC} main` : "";
+        console.log(
+            `${wt.path.padEnd(maxPath)}  ${CYAN}${wt.branch.padEnd(maxBranch)}${NC}  ${status}`
+        );
+    }
+}
+
+/** Find the main worktree path (directory containing .git as directory, not file) */
+async function findMainWorktreePath(worktreeHome: string): Promise<string | null> {
+    // List immediate subdirectories
+    const { readdir } = await import("node:fs/promises");
+    const entries = await readdir(worktreeHome, { withFileTypes: true });
+
+    for (const entry of entries) {
+        if (entry.isDirectory()) {
+            const dirPath = `${worktreeHome}/${entry.name}`;
+            if (await isMainWorktree(dirPath)) {
+                return dirPath;
+            }
+        }
+    }
+
+    return null;
+}
+
+/** Check if a directory is the main worktree (has .git as directory, not file) */
+async function isMainWorktree(dirPath: string): Promise<boolean> {
+    const gitPath = `${dirPath}/.git`;
+    const { stat } = await import("node:fs/promises");
+
+    try {
+        const stats = await stat(gitPath);
+        return stats.isDirectory();
+    } catch {
+        return false;
+    }
 }
 
 async function main(): Promise<void> {
