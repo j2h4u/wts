@@ -76,8 +76,9 @@ async function confirm(message: string): Promise<boolean> {
         output: process.stdout,
     });
     try {
-        const answer = await rl.question(`${theme.style.header(message)} ${theme.style.debug("(y/N)")} `);
-        return answer.toLowerCase() === "y" || answer.toLowerCase() === "yes";
+        const answer = await rl.question(`${theme.style.header(message)} ${theme.style.debug("(Y/n)")} `);
+        const normalized = answer.trim().toLowerCase();
+        return normalized === "" || normalized === "y" || normalized === "yes";
     } finally {
         rl.close();
     }
