@@ -165,13 +165,14 @@ ${pc.bold("COMMANDS:")}
   list                Show all worktrees
 
 ${pc.bold("OPTIONS:")}
+  --force, -f         Force operation (e.g. delete with uncommitted changes)
   --help, -h          Show this help message
   --version, -v       Show version
 
 ${pc.bold("EXAMPLES:")}
   wts clone git@github.com:user/repo.git
   wts new feature/xyz
-  wts done feature__xyz
+  wts done feature__xyz --force
   wts list
 `;
 
@@ -391,10 +392,13 @@ async function cmdNew(args: string[]): Promise<void> {
 }
 
 async function cmdDone(args: string[]): Promise<void> {
-    const targetDir = args[0];
+    const force = args.includes("--force") || args.includes("-f");
+    const positionalArgs = args.filter((a) => a !== "--force" && a !== "-f");
+
+    const targetDir = positionalArgs[0];
 
     if (!targetDir) {
-        logger.error("Usage: wts done <dir>\n\nExample: wts done feature__my-feature");
+        logger.error("Usage: wts done <dir> [--force]\n\nExample: wts done feature__my-feature");
     }
 
     // Find worktree home
@@ -434,8 +438,13 @@ async function cmdDone(args: string[]): Promise<void> {
     if (await hasUncommittedChanges(targetPath)) {
         logger.warn("Uncommitted changes detected!");
         await $`git status --short`.cwd(targetPath);
-        console.log("");
-        logger.error("Worktree has uncommitted changes. Commit or stash them first.");
+        console.error("");
+
+        if (force) {
+            logger.warn("Force deleting despite uncommitted changes.");
+        } else {
+            logger.error("Worktree has uncommitted changes. Commit, stash, or use --force.");
+        }
     }
 
     // Check .env.local diff
