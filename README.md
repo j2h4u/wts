@@ -2,8 +2,6 @@
 
 > CLI for managing git worktrees — keeps all worktrees as siblings in one folder.
 
-**wts** = Worktree **S**iblings + Type**S**cript
-
 ## Problem
 
 Standard `git worktree` creates worktrees scattered across the filesystem.  
@@ -42,6 +40,10 @@ wts list                # Show all worktrees
 ## Documentation
 
 See [docs/SPEC.md](docs/SPEC.md) for full specification.
+
+## Naming
+
+**wts** = Worktree **S**iblings + Type**S**cript
 
 ## License
 
