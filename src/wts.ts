@@ -148,9 +148,67 @@ function showVersion(): void {
 
 // Command stubs (to be implemented in separate proposals)
 async function cmdClone(args: string[]): Promise<void> {
-    log("Clone command");
-    warn("Not implemented yet. See proposal: add-clone-command");
-    console.log(`Args: ${args.join(", ") || "(none)"}`);
+    const url = args[0];
+    const customDir = args[1];
+
+    if (!url) {
+        error("Usage: wts clone <url> [dir]\n\nExample: wts clone git@github.com:user/repo.git");
+    }
+
+    // 1. Parse URL to get repo name
+    let repoName = "";
+    // Match: .../repo.git or .../repo
+    const match = url.match(/\/([^/]+?)(\.git)?$/);
+    if (match) {
+        repoName = match[1];
+    } else {
+        // Fallback: use the filename part of the URL
+        repoName = url.split("/").pop()?.replace(/\.git$/, "") || "repo";
+    }
+
+    // 2. Determine target directories
+    // If customDir is provided, use it as is. Otherwise use repoName.worktree
+    const worktreeHomeName = customDir || `${repoName}.worktree`;
+    const cwd = process.cwd();
+    const worktreeHomePath = `${cwd}/${worktreeHomeName}`;
+
+    log(`Cloning ${CYAN}${url}${NC}`);
+    log(`Target:  ${CYAN}${worktreeHomeName}${NC}`);
+
+    // Check if directory exists
+    const { access, mkdir, rm } = await import("node:fs/promises");
+    try {
+        await access(worktreeHomePath);
+        error(`Directory '${worktreeHomeName}' already exists.`);
+    } catch {
+        // Directory doesn't exist - good
+    }
+
+    // 3. Create worktree home
+    await mkdir(worktreeHomePath, { recursive: true });
+
+    try {
+        // 4. Detect default branch
+        const defaultBranch = await getDefaultBranch(url);
+        log(`Default branch: ${CYAN}${defaultBranch}${NC}`);
+
+        // 5. Clone into subdirectory
+        const clonePath = `${worktreeHomePath}/${defaultBranch}`;
+        log(`Cloning into ${CYAN}${defaultBranch}${NC}...`);
+
+        await $`git clone ${url} ${clonePath}`.quiet();
+
+        success(`Repository cloned: ${worktreeHomeName}`);
+        console.log("");
+        console.log("Next steps:");
+        console.log(`  cd ${worktreeHomeName}/${defaultBranch}`);
+        console.log("  wts new feature/my-feature");
+    } catch (e) {
+        // Cleanup on failure
+        warn("Clone failed. Cleaning up...");
+        await rm(worktreeHomePath, { recursive: true, force: true });
+        error(`Failed to clone: ${e}`);
+    }
 }
 
 async function cmdNew(args: string[]): Promise<void> {
@@ -251,9 +309,132 @@ async function cmdNew(args: string[]): Promise<void> {
 }
 
 async function cmdDone(args: string[]): Promise<void> {
-    log("Done command");
-    warn("Not implemented yet. See proposal: add-done-command");
-    console.log(`Args: ${args.join(", ") || "(none)"}`);
+    const targetDir = args[0];
+
+    if (!targetDir) {
+        error("Usage: wts done <dir>\n\nExample: wts done feature__my-feature");
+    }
+
+    // Find worktree home
+    const cwd = process.cwd();
+    const worktreeHome = await findWorktreeHome(cwd);
+
+    if (!worktreeHome) {
+        error("Not inside a worktree home. Run from a wts-managed repository.");
+    }
+
+    const { stat, readFile } = await import("node:fs/promises");
+    const { exists } = await import("node:fs");
+
+    // Resolve target path (handle absolute or relative)
+    const targetPath = targetDir.startsWith("/")
+        ? targetDir
+        : `${worktreeHome}/${targetDir}`;
+
+    const relPath = targetPath.startsWith(worktreeHome!)
+        ? targetPath.slice(worktreeHome!.length + 1)
+        : targetDir;
+
+    // 1. Safety Checks
+    try {
+        await stat(targetPath);
+    } catch {
+        error(`Worktree '${relPath}' not found.`);
+    }
+
+    // Prevent removing main worktree
+    if (await isMainWorktree(targetPath)) {
+        error("Cannot remove 'main' worktree!");
+    }
+
+    log(`Target: ${CYAN}${relPath}${NC}`);
+
+    // Check for uncommitted changes
+    if (await hasUncommittedChanges(targetPath)) {
+        warn("Uncommitted changes detected!");
+        await $`git status --short`.cwd(targetPath);
+        console.log("");
+
+        // In interactive mode we would ask confirmation. 
+        // For now, adhere to "abort on dirty" or force flag (simplification)
+        error("Worktree has uncommitted changes. Commit or stash them first.");
+    }
+
+    // Check .env.local diff
+    const mainWorktree = await findMainWorktreePath(worktreeHome!);
+    if (mainWorktree) {
+        const mainEnv = `${mainWorktree}/.env.local`;
+        const targetEnv = `${targetPath}/.env.local`;
+
+        try {
+            await stat(targetEnv);
+            await stat(mainEnv);
+
+            // Compare files
+            const mainContent = await readFile(mainEnv);
+            const targetContent = await readFile(targetEnv);
+
+            if (!mainContent.equals(targetContent)) {
+                warn(".env.local differs from main!");
+                // Simple implementation: warn but proceed (or error out)
+            }
+        } catch {
+            // Ignore missing env files
+        }
+    }
+
+    // 2. Get branch name
+    let branchName = "";
+    try {
+        const output = await $`git worktree list`.cwd(mainWorktree!).text();
+        const lines = output.trim().split("\n");
+        for (const line of lines) {
+            // Match path and extract branch
+            // The path in output might be absolute. targetPath is absolute.
+            // Git output: /abs/path  hash [branch]
+            if (line.includes(targetPath)) {
+                const match = line.match(/\[(.+)\]$/);
+                if (match) {
+                    branchName = match[1];
+                }
+                break;
+            }
+        }
+    } catch {
+        warn("Could not determine branch name from git worktree list.");
+    }
+
+    // 3. Remove worktree
+    log("Removing worktree...");
+    await $`git worktree remove ${targetPath}`.cwd(mainWorktree!);
+
+    // 4. Delete local branch
+    if (branchName) {
+        log(`Deleting local branch: ${CYAN}${branchName}${NC}`);
+        try {
+            await $`git branch -D ${branchName}`.cwd(mainWorktree!);
+        } catch (e) {
+            warn(`Failed to delete branch ${branchName}: ${e}`);
+        }
+    }
+
+    // 5. Cleanup & Sync
+    log("Syncing with remote...");
+    try {
+        await $`git fetch --prune`.cwd(mainWorktree!);
+        await $`git pull --ff-only`.cwd(mainWorktree!);
+    } catch {
+        warn("Failed to sync main branch.");
+    }
+
+    log("Syncing dependencies...");
+    try {
+        await $`bun install --frozen-lockfile`.cwd(mainWorktree!);
+    } catch {
+        warn("Failed to install dependencies.");
+    }
+
+    success("Worktree and branch removed");
 }
 
 async function cmdList(_args: string[]): Promise<void> {
