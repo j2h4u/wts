@@ -438,22 +438,25 @@ async function cmdDone(args: string[]): Promise<void> {
     const { stat, readFile, access } = await import("node:fs/promises");
 
     if (targetDir) {
-        // 1. Try as direct path
-        const directPath = targetDir.startsWith("/") ? targetDir : `${worktreeHome}/${targetDir}`;
+        // ALWAYS convert branch-like names (feature/foo) to dir-safe names (feature__foo) first
+        const safeDir = branchToDir(targetDir);
+        const branchPath = `${worktreeHome}/${safeDir}`;
+
         try {
-            await stat(directPath);
-            targetPath = directPath;
+            await stat(branchPath);
+            // Found the directory at the safe path
+            targetPath = branchPath;
         } catch {
-            // 2. Try as branch name -> directory
-            // e.g. feature/ui-test -> feature__ui-test
-            const safeDir = branchToDir(targetDir);
-            const branchPath = `${worktreeHome}/${safeDir}`;
+            // Safe path not found.
+            // Only purely as a fallback for backwards compatibility, we check strict direct path,
+            // but we default to assuming the user meant the branch-based directory.
+            const directPath = targetDir.startsWith("/") ? targetDir : `${worktreeHome}/${targetDir}`;
             try {
-                await stat(branchPath);
-                targetPath = branchPath;
-            } catch {
-                // Return original path to fail later with "not found"
+                await stat(directPath);
                 targetPath = directPath;
+            } catch {
+                // Neither found. Prefer indicating the safe path was missing if they look different
+                targetPath = branchPath;
             }
         }
     } else {
@@ -590,18 +593,7 @@ async function cmdDone(args: string[]): Promise<void> {
         }
     });
 
-    const hasPackageJson = await fileExists(`${mainWorktree!}/package.json`);
-    if (hasPackageJson) {
-        await runWithSpinner(`Syncing dependencies ${pc.italic("(bun install)")}...`, async (spinner) => {
-            try {
-                await runSilent($`bun install --frozen-lockfile`.cwd(mainWorktree!));
-                spinner.succeed();
-            } catch (e) {
-                spinner.warn("Failed to install dependencies.");
-                logger.error(`${e}`);
-            }
-        });
-    }
+
 }
 
 async function cmdList(_args: string[]): Promise<void> {
