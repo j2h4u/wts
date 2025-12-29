@@ -17,7 +17,9 @@ else
     echo "SSH agent not found. Running without SSH keys (HTTPS only)."
 fi
 
-docker run --rm \
+docker run -t --rm \
     -v "$(pwd):/app" \
+    -e FORCE_COLOR=1 \
+    -e TERM=xterm-256color \
     $SSH_ARGS \
     wts-test

@@ -7,46 +7,56 @@
  */
 
 import { $ } from "bun";
+import ora, { type Ora } from "ora";
+import pc from "picocolors";
 
 // ============================================================================
 // Output Helpers
 // ============================================================================
 
-const RED = "\x1b[0;31m";
-const GREEN = "\x1b[0;32m";
-const YELLOW = "\x1b[1;33m";
-const BLUE = "\x1b[0;34m";
-const CYAN = "\x1b[0;36m";
-const BOLD = "\x1b[1m";
-const GRAY = "\x1b[90m";
-const NC = "\x1b[0m"; // No Color
-
-/** Section header with blue arrow */
-function log(message: string): void {
-    console.log(`${BLUE}==>${NC} ${BOLD}${message}${NC}`);
-}
-
-/** Green checkmark + message */
-function success(message: string): void {
-    console.log(`${GREEN}✓${NC} ${message}`);
-}
-
-/** Red error message to stderr, then exit(1) */
-function error(message: string): never {
-    console.error(`${RED}ERROR:${NC} ${message}`);
-    process.exit(1);
-}
-
 const DEBUG = process.env.DEBUG === "true" || process.env.DEBUG === "1";
 
-/** Yellow warning to stderr */
-function warn(message: string): void {
-    console.error(`${YELLOW}WARNING:${NC} ${message}`);
-}
+const logger = {
+    info(message: string) {
+        console.log(`${pc.blue("==>")} ${pc.bold(message)}`);
+    },
+    success(message: string) {
+        console.log(`${pc.green("✓")} ${message}`);
+    },
+    error(message: string): never {
+        console.error(`${pc.red("ERROR:")} ${message}`);
+        process.exit(1);
+    },
+    warn(message: string) {
+        console.error(`${pc.yellow("WARNING:")} ${message}`);
+    },
+    debug(message: string) {
+        if (DEBUG) {
+            console.error(`${pc.dim("[DEBUG]")} ${pc.dim(message)}`);
+        }
+    },
+    dim(message: string) {
+        console.log(pc.gray(message));
+    }
+};
 
-function debug(message: string): void {
-    if (DEBUG) {
-        console.error(`${GRAY}[DEBUG]${NC} ${GRAY}${message}${NC}`);
+/**
+ * Execute a long-running task with a spinner.
+ * @param message Initial message for the spinner
+ * @param task Async function to execute
+ */
+async function runWithSpinner<T>(message: string, task: (spinner: Ora) => Promise<T>): Promise<T> {
+    const spinner = ora({ text: message, stream: process.stderr }).start();
+    try {
+        const result = await task(spinner);
+        if (spinner.isSpinning) {
+            // Docker style: Blue text on completion
+            spinner.stopAndPersist({ symbol: pc.blue("✔"), text: pc.blue(spinner.text) });
+        }
+        return result;
+    } catch (e) {
+        spinner.fail(pc.red("Operation failed"));
+        throw e;
     }
 }
 
@@ -64,25 +74,25 @@ async function findWorktreeHome(startPath: string): Promise<string | null> {
     const { stat, readFile } = await import("node:fs/promises");
 
     let current = startPath;
-    debug(`Searching for worktree home starting from: ${current}`);
+    logger.debug(`Searching for worktree home starting from: ${current}`);
 
     while (current !== "/" && current !== "") {
         const gitPath = `${current}/.git`;
-        debug(`Checking ${gitPath}`);
+        logger.debug(`Checking ${gitPath}`);
 
         try {
             const stats = await stat(gitPath);
 
             if (stats.isDirectory()) {
                 // It's a directory = main worktree
-                debug(`Found .git directory at ${gitPath} (main worktree)`);
+                logger.debug(`Found .git directory at ${gitPath} (main worktree)`);
                 const parentDir = current.split("/").slice(0, -1).join("/");
                 return parentDir || "/";
             } else if (stats.isFile()) {
                 // It's a file = feature worktree
                 // Verify we can read it (sanity check)
                 await readFile(gitPath, "utf-8");
-                debug(`Found .git file at ${gitPath} (feature worktree), continuing up`);
+                logger.debug(`Found .git file at ${gitPath} (feature worktree), continuing up`);
             }
         } catch {
             // Not found or not accessible
@@ -90,7 +100,6 @@ async function findWorktreeHome(startPath: string): Promise<string | null> {
 
         current = current.split("/").slice(0, -1).join("/") || "/";
     }
-
 
     return null;
 }
@@ -143,22 +152,22 @@ async function hasUncommittedChanges(cwd?: string): Promise<boolean> {
 
 const VERSION = "0.1.0";
 
-const HELP = `${BOLD}wts${NC} — Worktree Siblings (v${VERSION})
+const HELP = `${pc.bold("wts")} — Worktree Siblings (v${VERSION})
 
-${BOLD}USAGE:${NC}
+${pc.bold("USAGE:")}
   wts <command> [options]
 
-${BOLD}COMMANDS:${NC}
+${pc.bold("COMMANDS:")}
   clone <url> [dir]   Clone repo with worktrees as siblings
   new <branch> [dir]  Create feature worktree
   done <dir>          Remove worktree and branch
   list                Show all worktrees
 
-${BOLD}OPTIONS:${NC}
+${pc.bold("OPTIONS:")}
   --help, -h          Show this help message
   --version, -v       Show version
 
-${BOLD}EXAMPLES:${NC}
+${pc.bold("EXAMPLES:")}
   wts clone git@github.com:user/repo.git
   wts new feature/xyz
   wts done feature__xyz
@@ -173,13 +182,12 @@ function showVersion(): void {
     console.log(`wts v${VERSION}`);
 }
 
-// Command stubs (to be implemented in separate proposals)
 async function cmdClone(args: string[]): Promise<void> {
     const url = args[0];
     const customDir = args[1];
 
     if (!url) {
-        error("Usage: wts clone <url> [dir]\n\nExample: wts clone git@github.com:user/repo.git");
+        logger.error("Usage: wts clone <url> [dir]\n\nExample: wts clone git@github.com:user/repo.git");
     }
 
     // 1. Parse URL to get repo name
@@ -199,14 +207,14 @@ async function cmdClone(args: string[]): Promise<void> {
     const cwd = process.cwd();
     const worktreeHomePath = `${cwd}/${worktreeHomeName}`;
 
-    log(`Cloning ${CYAN}${url}${NC}`);
-    log(`Target:  ${CYAN}${worktreeHomeName}${NC}`);
+    logger.info(`Cloning ${pc.cyan(url)}`);
+    logger.info(`Target:  ${pc.cyan(worktreeHomeName)}`);
 
     // Check if directory exists
     const { access, mkdir, rm } = await import("node:fs/promises");
     try {
         await access(worktreeHomePath);
-        error(`Directory '${worktreeHomeName}' already exists.`);
+        logger.error(`Directory '${worktreeHomeName}' already exists.`);
     } catch {
         // Directory doesn't exist - good
     }
@@ -216,25 +224,29 @@ async function cmdClone(args: string[]): Promise<void> {
 
     try {
         // 4. Detect default branch
-        const defaultBranch = await getDefaultBranch(url);
-        log(`Default branch: ${CYAN}${defaultBranch}${NC}`);
+        const defaultBranch = await runWithSpinner("Detecting default branch...", async (spinner) => {
+            const branch = await getDefaultBranch(url);
+            spinner.succeed(`Default branch: ${pc.cyan(branch)}`);
+            return branch;
+        });
 
         // 5. Clone into subdirectory
         const clonePath = `${worktreeHomePath}/${defaultBranch}`;
-        log(`Cloning into ${CYAN}${defaultBranch}${NC}...`);
+        await runWithSpinner(`Cloning into ${pc.cyan(defaultBranch)}`, async (spinner) => {
+            await $`git clone ${url} ${clonePath}`.quiet();
+            spinner.succeed();
+        });
 
-        await $`git clone ${url} ${clonePath}`.quiet();
-
-        success(`Repository cloned: ${worktreeHomeName}`);
+        logger.success(`Repository cloned: ${worktreeHomeName}`);
         console.log("");
-        console.log(`${GRAY}Next steps:${NC}`);
-        console.log(`${GRAY}  cd ${worktreeHomeName}/${defaultBranch}${NC}`);
-        console.log(`${GRAY}  wts new feature/my-feature${NC}`);
+        logger.dim("Next steps:");
+        logger.dim(`  cd ${worktreeHomeName}/${defaultBranch}`);
+        logger.dim("  wts new feature/my-feature");
     } catch (e) {
         // Cleanup on failure
-        warn("Clone failed. Cleaning up...");
+        logger.warn("Clone failed. Cleaning up...");
         await rm(worktreeHomePath, { recursive: true, force: true });
-        error(`Failed to clone: ${e}`);
+        logger.error(`Failed to clone: ${e}`);
     }
 }
 
@@ -243,7 +255,7 @@ async function cmdNew(args: string[]): Promise<void> {
     const customDir = args[1];
 
     if (!branch) {
-        error("Usage: wts new <branch> [dir]\n\nExample: wts new feature/my-feature");
+        logger.error("Usage: wts new <branch> [dir]\n\nExample: wts new feature/my-feature");
     }
 
     // Find worktree home from current directory
@@ -251,29 +263,29 @@ async function cmdNew(args: string[]): Promise<void> {
     const worktreeHome = await findWorktreeHome(cwd);
 
     if (!worktreeHome) {
-        error("Not inside a worktree home. Run from a wts-managed repository.");
+        logger.error("Not inside a worktree home. Run from a wts-managed repository.");
     }
 
     // Find the main worktree
-    const mainWorktree = await findMainWorktreePath(worktreeHome);
+    const mainWorktree = await findMainWorktreePath(worktreeHome!);
     if (!mainWorktree) {
-        error("Could not find main worktree with .git directory.");
+        logger.error("Could not find main worktree with .git directory.");
     }
 
-    log(`Creating worktree for branch: ${CYAN}${branch}${NC}`);
+    logger.info(`Creating worktree for branch: ${pc.cyan(branch)}`);
 
     // Check if branch already exists locally
     try {
-        await $`git show-ref --verify refs/heads/${branch}`.cwd(mainWorktree).quiet();
-        error(`Branch '${branch}' already exists locally.`);
+        await $`git show-ref --verify refs/heads/${branch}`.cwd(mainWorktree!).quiet();
+        logger.error(`Branch '${branch}' already exists locally.`);
     } catch {
         // Branch doesn't exist locally - good
     }
 
     // Check if branch exists on remote
     try {
-        await $`git show-ref --verify refs/remotes/origin/${branch}`.cwd(mainWorktree).quiet();
-        error(`Branch '${branch}' already exists on remote.`);
+        await $`git show-ref --verify refs/remotes/origin/${branch}`.cwd(mainWorktree!).quiet();
+        logger.error(`Branch '${branch}' already exists on remote.`);
     } catch {
         // Branch doesn't exist on remote - good
     }
@@ -286,26 +298,31 @@ async function cmdNew(args: string[]): Promise<void> {
     const { access } = await import("node:fs/promises");
     try {
         await access(targetPath);
-        error(`Directory '${targetDirName}' already exists.`);
+        logger.error(`Directory '${targetDirName}' already exists.`);
     } catch {
         // Directory doesn't exist - good
     }
 
     // Update main branch first
-    log("Updating main branch...");
-    try {
-        await $`git pull --ff-only`.cwd(mainWorktree);
-    } catch (e) {
-        warn("Could not update main branch. Continuing anyway.");
-    }
+    await runWithSpinner("Updating main branch...", async (spinner) => {
+        try {
+            await $`git pull --ff-only`.cwd(mainWorktree!).quiet();
+            spinner.succeed();
+        } catch (e) {
+            spinner.warn("Could not update main branch. Continuing anyway.");
+        }
+    });
 
     // Create worktree with new branch
-    log(`Creating worktree at ${CYAN}${targetDirName}${NC}...`);
-    try {
-        await $`git worktree add ${targetPath} -b ${branch}`.cwd(mainWorktree);
-    } catch (e) {
-        error(`Failed to create worktree: ${e}`);
-    }
+    await runWithSpinner(`Creating worktree at ${pc.cyan(targetDirName)}`, async (spinner) => {
+        try {
+            await $`git worktree add ${targetPath} -b ${branch}`.cwd(mainWorktree!).quiet();
+            spinner.succeed();
+        } catch (e) {
+            spinner.fail("Failed to create worktree");
+            logger.error(`Failed to create worktree: ${e}`);
+        }
+    });
 
     // Copy .env.local if it exists
     const mainEnv = `${mainWorktree}/.env.local`;
@@ -314,8 +331,10 @@ async function cmdNew(args: string[]): Promise<void> {
 
     try {
         await access(mainEnv);
-        log("Copying .env.local from main...");
-        await copyFile(mainEnv, targetEnv);
+        await runWithSpinner("Copying .env.local from main...", async (spinner) => {
+            await copyFile(mainEnv, targetEnv);
+            spinner.text = "Copied .env.local";
+        });
     } catch {
         // No .env.local in main - that's okay
     }
@@ -324,24 +343,30 @@ async function cmdNew(args: string[]): Promise<void> {
     const hasPackageJson = await fileExists(`${targetPath}/package.json`);
 
     if (hasPackageJson) {
-        log("Installing dependencies...");
-        try {
-            await $`bun install --frozen-lockfile`.cwd(targetPath);
-        } catch (e) {
-            warn("Failed to install dependencies. Run 'bun install' manually.");
-        }
+        await runWithSpinner("Installing dependencies... (this may take a while)", async (spinner) => {
+            try {
+                // We use .text() to capture output but not show it unless error, 
+                // but for long install it might be nice to show it? 
+                // For now, keep it hidden as requested ("distinguish" by hiding).
+                await $`bun install --frozen-lockfile`.cwd(targetPath).quiet();
+                spinner.text = "Dependencies installed";
+            } catch (e) {
+                spinner.warn("Failed to install dependencies.");
+                logger.warn("Run 'bun install' manually.");
+            }
+        });
     } else {
-        console.log(`${GRAY}No package.json found. Skipping dependency installation.${NC}`);
+        logger.dim("No package.json found. Skipping dependency installation.");
     }
 
-    success(`Worktree created: ${targetDirName}`);
-    console.log("");
-    console.log(`${GRAY}Next steps:${NC}`);
-    console.log(`${GRAY}  cd ../${targetDirName}${NC}`);
+    logger.success(`Worktree ready: ${targetDirName}`);
+    console.error(""); // blank line
+    logger.dim("Next steps:");
+    logger.dim(`  cd ../${targetDirName}`);
     if (hasPackageJson) {
-        console.log(`${GRAY}  bun run dev${NC}`);
+        logger.dim("  bun run dev");
     } else {
-        console.log(`${GRAY}  <run your project>${NC}`);
+        logger.dim("  <run your project>");
     }
 }
 
@@ -349,7 +374,7 @@ async function cmdDone(args: string[]): Promise<void> {
     const targetDir = args[0];
 
     if (!targetDir) {
-        error("Usage: wts done <dir>\n\nExample: wts done feature__my-feature");
+        logger.error("Usage: wts done <dir>\n\nExample: wts done feature__my-feature");
     }
 
     // Find worktree home
@@ -357,11 +382,10 @@ async function cmdDone(args: string[]): Promise<void> {
     const worktreeHome = await findWorktreeHome(cwd);
 
     if (!worktreeHome) {
-        error("Not inside a worktree home. Run from a wts-managed repository.");
+        logger.error("Not inside a worktree home. Run from a wts-managed repository.");
     }
 
-    const { stat, readFile } = await import("node:fs/promises");
-    const { exists } = await import("node:fs");
+    const { stat, readFile, access } = await import("node:fs/promises");
 
     // Resolve target path (handle absolute or relative)
     const targetPath = targetDir.startsWith("/")
@@ -376,25 +400,22 @@ async function cmdDone(args: string[]): Promise<void> {
     try {
         await stat(targetPath);
     } catch {
-        error(`Worktree '${relPath}' not found.`);
+        logger.error(`Worktree '${relPath}' not found.`);
     }
 
     // Prevent removing main worktree
     if (await isMainWorktree(targetPath)) {
-        error("Cannot remove 'main' worktree!");
+        logger.error("Cannot remove 'main' worktree!");
     }
 
-    log(`Target: ${CYAN}${relPath}${NC}`);
+    logger.info(`Target: ${pc.cyan(relPath)}`);
 
     // Check for uncommitted changes
     if (await hasUncommittedChanges(targetPath)) {
-        warn("Uncommitted changes detected!");
+        logger.warn("Uncommitted changes detected!");
         await $`git status --short`.cwd(targetPath);
         console.log("");
-
-        // In interactive mode we would ask confirmation. 
-        // For now, adhere to "abort on dirty" or force flag (simplification)
-        error("Worktree has uncommitted changes. Commit or stash them first.");
+        logger.error("Worktree has uncommitted changes. Commit or stash them first.");
     }
 
     // Check .env.local diff
@@ -412,8 +433,7 @@ async function cmdDone(args: string[]): Promise<void> {
             const targetContent = await readFile(targetEnv);
 
             if (!mainContent.equals(targetContent)) {
-                warn(".env.local differs from main!");
-                // Simple implementation: warn but proceed (or error out)
+                logger.warn(".env.local differs from main!");
             }
         } catch {
             // Ignore missing env files
@@ -426,9 +446,6 @@ async function cmdDone(args: string[]): Promise<void> {
         const output = await $`git worktree list`.cwd(mainWorktree!).text();
         const lines = output.trim().split("\n");
         for (const line of lines) {
-            // Match path and extract branch
-            // The path in output might be absolute. targetPath is absolute.
-            // Git output: /abs/path  hash [branch]
             if (line.includes(targetPath)) {
                 const match = line.match(/\[(.+)\]$/);
                 if (match) {
@@ -438,42 +455,50 @@ async function cmdDone(args: string[]): Promise<void> {
             }
         }
     } catch {
-        warn("Could not determine branch name from git worktree list.");
+        logger.warn("Could not determine branch name from git worktree list.");
     }
 
     // 3. Remove worktree
-    log("Removing worktree...");
-    await $`git worktree remove ${targetPath}`.cwd(mainWorktree!);
+    await runWithSpinner("Removing worktree", async (spinner) => {
+        await $`git worktree remove ${targetPath}`.cwd(mainWorktree!).quiet();
+        spinner.succeed();
+    });
 
     // 4. Delete local branch
     if (branchName) {
-        log(`Deleting local branch: ${CYAN}${branchName}${NC}`);
-        try {
-            await $`git branch -D ${branchName}`.cwd(mainWorktree!);
-        } catch (e) {
-            warn(`Failed to delete branch ${branchName}: ${e}`);
-        }
+        await runWithSpinner(`Deleting local branch: ${pc.cyan(branchName)}`, async (spinner) => {
+            try {
+                await $`git branch -D ${branchName}`.cwd(mainWorktree!).quiet();
+                spinner.succeed();
+            } catch (e) {
+                spinner.warn(`Failed to delete branch ${branchName}`);
+            }
+        });
     }
 
-    success("Worktree and branch removed");
+    logger.success("Worktree and branch removed");
 
     // 5. Cleanup & Sync
-    log("Syncing with remote...");
-    try {
-        await $`git fetch --prune`.cwd(mainWorktree!);
-        await $`git pull --ff-only`.cwd(mainWorktree!);
-    } catch {
-        warn("Failed to sync main branch.");
-    }
+    await runWithSpinner("Syncing with remote", async (spinner) => {
+        try {
+            await $`git fetch --prune`.cwd(mainWorktree!).quiet();
+            await $`git pull --ff-only`.cwd(mainWorktree!).quiet();
+            spinner.succeed();
+        } catch {
+            spinner.warn("Failed to sync main branch.");
+        }
+    });
 
     const hasPackageJson = await fileExists(`${mainWorktree!}/package.json`);
     if (hasPackageJson) {
-        log("Syncing dependencies...");
-        try {
-            await $`bun install --frozen-lockfile`.cwd(mainWorktree!);
-        } catch {
-            warn("Failed to install dependencies.");
-        }
+        await runWithSpinner("Syncing dependencies", async (spinner) => {
+            try {
+                await $`bun install --frozen-lockfile`.cwd(mainWorktree!).quiet();
+                spinner.succeed();
+            } catch {
+                spinner.warn("Failed to install dependencies.");
+            }
+        });
     }
 }
 
@@ -483,24 +508,24 @@ async function cmdList(_args: string[]): Promise<void> {
     const worktreeHome = await findWorktreeHome(cwd);
 
     if (!worktreeHome) {
-        error("Not inside a worktree home. Run from a wts-managed repository.");
+        logger.error("Not inside a worktree home. Run from a wts-managed repository.");
     }
 
     // Get worktree list from git
     let output: string;
     try {
         // Find the main worktree (has .git directory)
-        const mainWorktree = await findMainWorktreePath(worktreeHome);
+        const mainWorktree = await findMainWorktreePath(worktreeHome!);
         if (!mainWorktree) {
-            error("Could not find main worktree with .git directory.");
+            logger.error("Could not find main worktree with .git directory.");
         }
-        output = await $`git worktree list`.cwd(mainWorktree).text();
+        output = await $`git worktree list`.cwd(mainWorktree!).text();
     } catch (e) {
-        error("Failed to list worktrees. Is this a git repository?");
+        logger.error("Failed to list worktrees. Is this a git repository?");
     }
 
     // Parse output: /path/to/worktree  abc1234 [branch-name]
-    const lines = output.trim().split("\n").filter(Boolean);
+    const lines = output!.trim().split("\n").filter(Boolean);
     const worktrees: { path: string; hash: string; branch: string; isMain: boolean }[] = [];
 
     for (const line of lines) {
@@ -508,8 +533,8 @@ async function cmdList(_args: string[]): Promise<void> {
         if (match) {
             const [, absPath, hash, branch] = match;
             const isMain = await isMainWorktree(absPath);
-            const relPath = absPath.startsWith(worktreeHome)
-                ? absPath.slice(worktreeHome.length + 1) || "."
+            const relPath = absPath.startsWith(worktreeHome!)
+                ? absPath.slice(worktreeHome!.length + 1) || "."
                 : absPath;
             worktrees.push({ path: relPath, hash, branch, isMain });
         }
@@ -526,14 +551,14 @@ async function cmdList(_args: string[]): Promise<void> {
 
     // Print header
     console.log(
-        `${BOLD}${"PATH".padEnd(maxPath)}  ${"BRANCH".padEnd(maxBranch)}  STATUS${NC}`
+        `${pc.bold("PATH".padEnd(maxPath))}  ${"BRANCH".padEnd(maxBranch)}  STATUS`
     );
 
     // Print worktrees
     for (const wt of worktrees) {
-        const status = wt.isMain ? `${GREEN}*${NC} main` : "";
+        const status = wt.isMain ? `${pc.green("*")} main` : "";
         console.log(
-            `${wt.path.padEnd(maxPath)}  ${CYAN}${wt.branch.padEnd(maxBranch)}${NC}  ${status}`
+            `${wt.path.padEnd(maxPath)}  ${pc.cyan(wt.branch.padEnd(maxBranch))}  ${status}`
         );
     }
 }
@@ -600,37 +625,18 @@ async function main(): Promise<void> {
             await cmdList(commandArgs);
             break;
         default:
-            console.error(`${RED}ERROR:${NC} Unknown command: ${command}`);
-            console.error("");
-            console.error("Available commands: clone, new, done, list");
-            console.error("Run 'wts --help' for usage information.");
-            process.exit(1);
+            logger.error(`Unknown command: ${command}\n\nRunning 'wts --help' for usage information.`);
     }
 }
 
-// Export utilities for use by command implementations
+// Export utilities for testing if needed
 export {
-    // Output helpers
-    log,
-    success,
-    error,
-    warn,
-    // Path utilities
+    logger,
     branchToDir,
-    findWorktreeHome,
-    // Git utilities
-    getDefaultBranch,
-    hasUncommittedChanges,
-    // Colors
-    RED,
-    GREEN,
-    YELLOW,
-    BLUE,
-    CYAN,
-    BOLD,
-    NC,
+    findWorktreeHome
 };
 
 main().catch((err) => {
-    error(err.message);
+    console.error(err);
+    process.exit(1);
 });
