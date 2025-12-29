@@ -744,9 +744,8 @@ async function cmdList(_args: string[]): Promise<void> {
         logger.error("Failed to list worktrees. Is this a git repository?");
     }
 
-    // Parse output: /path/to/worktree  abc1234 [branch-name]
     const lines = output!.trim().split("\n").filter(Boolean);
-    const worktrees: { path: string; hash: string; branch: string; isMain: boolean; isCurrent: boolean }[] = [];
+    const worktrees: { path: string; hash: string; branch: string; isMain: boolean; isCurrent: boolean; isDirty: boolean }[] = [];
 
     for (const line of lines) {
         const match = line.match(/^(\S+)\s+(\w+)\s+\[(.+)\]$/);
@@ -755,10 +754,11 @@ async function cmdList(_args: string[]): Promise<void> {
             const isMain = await isMainWorktree(absPath);
             // Current worktree check: cwd starts with absPath
             const isCurrent = cwd === absPath || cwd.startsWith(absPath + "/");
+            const isDirty = await hasUncommittedChanges(absPath);
             const relPath = absPath.startsWith(worktreeHome!)
                 ? absPath.slice(worktreeHome!.length + 1) || "."
                 : absPath;
-            worktrees.push({ path: relPath, hash, branch, isMain, isCurrent });
+            worktrees.push({ path: relPath, hash, branch, isMain, isCurrent, isDirty });
         }
     }
 
@@ -773,19 +773,20 @@ async function cmdList(_args: string[]): Promise<void> {
 
     // Print header
     console.log(
-        `${theme.style.header("BRANCH".padEnd(maxBranch))}  ${theme.style.header("PATH".padEnd(maxPath))}  STATUS`
+        `  ${theme.style.header("BRANCH".padEnd(maxBranch))}  ${theme.style.header("PATH".padEnd(maxPath))}  ${theme.style.header("TYPE")}`
     );
 
     // Print worktrees
     for (const wt of worktrees) {
+        const indicator = wt.isCurrent ? theme.style.success("* ") : "  ";
         const statuses: string[] = [];
-        if (wt.isCurrent) statuses.push(`${theme.style.success("*")}`);
-        if (wt.isMain) statuses.push("main");
+        if (wt.isMain) statuses.push("primary");
+        if (wt.isDirty) statuses.push(theme.style.warn("dirty"));
 
-        const statusStr = statuses.join(" ");
+        const statusStr = statuses.join(", ");
 
         console.log(
-            `${theme.style.accent(wt.branch.padEnd(maxBranch))}  ${wt.path.padEnd(maxPath)}  ${statusStr}`
+            `${indicator}${theme.style.accent(wt.branch.padEnd(maxBranch))}  ${wt.path.padEnd(maxPath)}  ${statusStr}`
         );
     }
 }
