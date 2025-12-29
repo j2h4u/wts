@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.7.0] - 2025-12-29
+
+### Added
+- **Dependency Discovery Info**: `wts` now explicitly notifies when a manifest file (e.g., `package.json`) is found before starting dependency installation.
+
 ## [0.6.0] - 2025-12-29
 
 ### Added

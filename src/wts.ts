@@ -487,6 +487,7 @@ async function cmdNew(args: string[]): Promise<void> {
     const hasPackageJson = await fileExists(`${targetPath}/${CONFIG.files.manifest}`);
 
     if (hasPackageJson) {
+        logger.info(`Dependencies found (${CONFIG.files.manifest})`);
         await runWithSpinner("Installing dependencies... (this may take a while)", async (spinner) => {
             try {
                 // We use .text() to capture output but not show it unless error, 
@@ -690,6 +691,7 @@ async function cmdDone(args: string[]): Promise<void> {
 
     const hasPackageJson = await fileExists(`${mainWorktree!}/${CONFIG.files.manifest}`);
     if (hasPackageJson) {
+        logger.info(`Dependencies found (${CONFIG.files.manifest})`);
         await runWithSpinner(`Syncing dependencies ${theme.style.command(CONFIG.deps.installMsg)}...`, async (spinner) => {
             try {
                 // Split command string into executable and args for $ string template? 
