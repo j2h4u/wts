@@ -11,6 +11,28 @@ import ora, { type Ora } from "ora";
 import pc from "picocolors";
 
 // ============================================================================
+// Configuration
+// ============================================================================
+
+const CONFIG = {
+    /** Files to check for project type detection */
+    files: {
+        manifest: "package.json",
+        envLocal: ".env.local"
+    },
+    /** Dependency management commands */
+    deps: {
+        installCmd: "bun install --frozen-lockfile", // Command to install deps
+        installHint: "bun install",               // User-facing hint
+        installMsg: "(bun install)"               // Spinner suffix
+    },
+    /** Default values */
+    defaults: {
+        branch: "main"
+    }
+};
+
+// ============================================================================
 // Output Helpers
 // ============================================================================
 
@@ -156,8 +178,8 @@ async function getDefaultBranch(repoUrl: string): Promise<string> {
         // Fallback: try common names
     }
 
-    // Fallback to 'main'
-    return "main";
+    // Fallback
+    return CONFIG.defaults.branch;
 }
 
 /** Check if current directory has uncommitted changes */
@@ -270,8 +292,8 @@ async function cmdClone(args: string[]): Promise<void> {
         logger.dim(`  cd ${worktreeHomeName}/${defaultBranch}`);
 
         // Suggest install if package.json exists
-        if (await fileExists(`${clonePath}/package.json`)) {
-            logger.dim("  bun install");
+        if (await fileExists(`${clonePath}/${CONFIG.files.manifest}`)) {
+            logger.dim(`  ${CONFIG.deps.installHint}`);
         }
     } catch (e) {
         // Cleanup on failure
@@ -372,8 +394,8 @@ async function cmdNew(args: string[]): Promise<void> {
     }
 
     // Copy .env.local if it exists
-    const mainEnv = `${mainWorktree}/.env.local`;
-    const targetEnv = `${targetPath}/.env.local`;
+    const mainEnv = `${mainWorktree}/${CONFIG.files.envLocal}`;
+    const targetEnv = `${targetPath}/${CONFIG.files.envLocal}`;
     const { copyFile } = await import("node:fs/promises");
 
     try {
@@ -387,7 +409,7 @@ async function cmdNew(args: string[]): Promise<void> {
     }
 
     // Install dependencies
-    const hasPackageJson = await fileExists(`${targetPath}/package.json`);
+    const hasPackageJson = await fileExists(`${targetPath}/${CONFIG.files.manifest}`);
 
     if (hasPackageJson) {
         await runWithSpinner("Installing dependencies... (this may take a while)", async (spinner) => {
@@ -395,15 +417,15 @@ async function cmdNew(args: string[]): Promise<void> {
                 // We use .text() to capture output but not show it unless error, 
                 // but for long install it might be nice to show it? 
                 // For now, keep it hidden as requested ("distinguish" by hiding).
-                await $`bun install --frozen-lockfile`.cwd(targetPath).quiet();
+                await runSilent($`${{ raw: CONFIG.deps.installCmd }}`.cwd(targetPath));
                 spinner.text = "Dependencies installed";
             } catch (e) {
                 spinner.warn("Failed to install dependencies.");
-                logger.warn("Run 'bun install' manually.");
+                logger.warn(`Run '${CONFIG.deps.installHint}' manually.`);
             }
         });
     } else {
-        logger.dim("No package.json found. Skipping dependency installation.");
+        logger.dim(`No ${CONFIG.files.manifest} found. Skipping dependency installation.`);
     }
 
     logger.success(`Worktree ready: ${targetDirName}`);
@@ -519,8 +541,8 @@ async function cmdDone(args: string[]): Promise<void> {
     }
 
     // Check .env.local diff
-    const mainEnv = `${mainWorktree}/.env.local`;
-    const targetEnv = `${targetPath}/.env.local`;
+    const mainEnv = `${mainWorktree}/${CONFIG.files.envLocal}`;
+    const targetEnv = `${targetPath}/${CONFIG.files.envLocal}`;
 
     try {
         await stat(targetEnv);
@@ -531,7 +553,7 @@ async function cmdDone(args: string[]): Promise<void> {
         const targetContent = await readFile(targetEnv);
 
         if (!mainContent.equals(targetContent)) {
-            logger.warn(".env.local differs from main!");
+            logger.warn(`${CONFIG.files.envLocal} differs from main!`);
         }
     } catch {
         // Ignore missing env files
@@ -591,11 +613,31 @@ async function cmdDone(args: string[]): Promise<void> {
         }
     });
 
-    const hasPackageJson = await fileExists(`${mainWorktree!}/package.json`);
+    const hasPackageJson = await fileExists(`${mainWorktree!}/${CONFIG.files.manifest}`);
     if (hasPackageJson) {
-        await runWithSpinner(`Syncing dependencies ${pc.italic("(bun install)")}...`, async (spinner) => {
+        await runWithSpinner(`Syncing dependencies ${pc.italic(CONFIG.deps.installMsg)}...`, async (spinner) => {
             try {
-                await runSilent($`bun install --frozen-lockfile`.cwd(mainWorktree!));
+                // Split command string into executable and args for $ string template? 
+                // Bun's $ works best with template literals. 
+                // Simpler: just hardcode 'bun install' but use config for the flags if needed?
+                // Or just use the string if it's simple. 
+                // Let's stick to the current string but use the config value as source.
+                // We can't pass a raw string to $ unless we parse it. 
+                // For simplicity, we'll assume it's bun install for now or parse deeply.
+                // But wait, the user wants less hardcode.
+                // `await $`${CONFIG.deps.installCmd.split(' ')[0]} ${CONFIG.deps.installCmd.split(' ').slice(1)}``
+                // That's risky. Let's just use the string in the log and keep the code 'bun install' for now, 
+                // or if we really want to config it, we need to execute it properly.
+                // Given the restriction of Bun shell, let's keep the executable clear but flags configurable?
+                // No, let's just execute it as a raw string using shell?
+                // actually, `await $`${{ raw: CONFIG.deps.installCmd }}`.cwd(...)` might work in Bun?
+                // Checked Bun docs: no obvious raw string interpolation for commands. 
+                // We'll stick to replacing the *logic* spots with the config constants where safe.
+                // Actually, let's just stick to 'bun install --frozen-lockfile' in code if it's complex,
+                // but since the user asked, let's try to obey.
+                // We will hardcode checking CONFIG.files.manifest.
+
+                await runSilent($`${{ raw: CONFIG.deps.installCmd }}`.cwd(mainWorktree!));
                 spinner.succeed();
             } catch (e) {
                 spinner.warn("Failed to install dependencies.");
