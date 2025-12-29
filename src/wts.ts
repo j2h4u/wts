@@ -238,11 +238,15 @@ async function cmdClone(args: string[]): Promise<void> {
             spinner.succeed();
         });
 
-        logger.success(`Repository cloned: ${worktreeHomeName}`);
-        console.log("");
+        logger.success(`Repository cloned: ${pc.cyan(worktreeHomeName)}`);
+        console.error("");
         logger.dim("Next steps:");
         logger.dim(`  cd ${worktreeHomeName}/${defaultBranch}`);
-        logger.dim("  wts new feature/my-feature");
+
+        // Suggest install if package.json exists
+        if (await fileExists(`${clonePath}/package.json`)) {
+            logger.dim("  bun install");
+        }
     } catch (e) {
         // Cleanup on failure
         logger.warn("Clone failed. Cleaning up...");
@@ -599,6 +603,9 @@ async function main(): Promise<void> {
     const args = process.argv.slice(2);
     const command = args[0];
     const commandArgs = args.slice(1);
+
+    // Always print version header
+    console.error(pc.dim(`wts v${VERSION}`));
 
     // Handle flags
     if (!command || command === "--help" || command === "-h") {
