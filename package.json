@@ -1,0 +1,25 @@
+{
+    "name": "wts",
+    "version": "0.1.0",
+    "description": "Worktree Siblings — CLI for managing git worktrees with sibling layout",
+    "type": "module",
+    "bin": {
+        "wts": "src/wts.ts"
+    },
+    "scripts": {
+        "dev": "bun run src/wts.ts"
+    },
+    "keywords": [
+        "git",
+        "worktree",
+        "cli",
+        "typescript",
+        "bun"
+    ],
+    "author": "j2h4u",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.0.0"
+    }
+}
