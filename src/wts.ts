@@ -51,7 +51,7 @@ async function runWithSpinner<T>(message: string, task: (spinner: Ora) => Promis
         const result = await task(spinner);
         if (spinner.isSpinning) {
             // Docker style: Blue text on completion
-            spinner.stopAndPersist({ symbol: pc.blueBright("✔"), text: pc.bgBlueBright(spinner.text) });
+            spinner.stopAndPersist({ symbol: pc.blueBright("✔"), text: pc.blueBright(spinner.text) });
         }
         return result;
     } catch (e) {
@@ -435,10 +435,27 @@ async function cmdDone(args: string[]): Promise<void> {
     // If explicit arg provided, use it. Otherwise use CWD.
     let targetPath: string = "";
 
+    const { stat, readFile, access } = await import("node:fs/promises");
+
     if (targetDir) {
-        targetPath = targetDir.startsWith("/")
-            ? targetDir
-            : `${worktreeHome}/${targetDir}`;
+        // 1. Try as direct path
+        const directPath = targetDir.startsWith("/") ? targetDir : `${worktreeHome}/${targetDir}`;
+        try {
+            await stat(directPath);
+            targetPath = directPath;
+        } catch {
+            // 2. Try as branch name -> directory
+            // e.g. feature/ui-test -> feature__ui-test
+            const safeDir = branchToDir(targetDir);
+            const branchPath = `${worktreeHome}/${safeDir}`;
+            try {
+                await stat(branchPath);
+                targetPath = branchPath;
+            } catch {
+                // Return original path to fail later with "not found"
+                targetPath = directPath;
+            }
+        }
     } else {
         // Infer from CWD
         // We need to ensure CWD is actually a worktree root or inside one
@@ -459,7 +476,7 @@ async function cmdDone(args: string[]): Promise<void> {
         logger.error("Could not find main worktree with .git directory.");
     }
 
-    const { stat, readFile, access } = await import("node:fs/promises");
+
 
     const relPath = targetPath.startsWith(worktreeHome!)
         ? targetPath.slice(worktreeHome!.length + 1)
