@@ -746,17 +746,19 @@ async function cmdList(_args: string[]): Promise<void> {
 
     // Parse output: /path/to/worktree  abc1234 [branch-name]
     const lines = output!.trim().split("\n").filter(Boolean);
-    const worktrees: { path: string; hash: string; branch: string; isMain: boolean }[] = [];
+    const worktrees: { path: string; hash: string; branch: string; isMain: boolean; isCurrent: boolean }[] = [];
 
     for (const line of lines) {
         const match = line.match(/^(\S+)\s+(\w+)\s+\[(.+)\]$/);
         if (match) {
             const [, absPath, hash, branch] = match;
             const isMain = await isMainWorktree(absPath);
+            // Current worktree check: cwd starts with absPath
+            const isCurrent = cwd === absPath || cwd.startsWith(absPath + "/");
             const relPath = absPath.startsWith(worktreeHome!)
                 ? absPath.slice(worktreeHome!.length + 1) || "."
                 : absPath;
-            worktrees.push({ path: relPath, hash, branch, isMain });
+            worktrees.push({ path: relPath, hash, branch, isMain, isCurrent });
         }
     }
 
@@ -771,14 +773,19 @@ async function cmdList(_args: string[]): Promise<void> {
 
     // Print header
     console.log(
-        `${theme.style.header("PATH".padEnd(maxPath))}  ${"BRANCH".padEnd(maxBranch)}  STATUS`
+        `${theme.style.header("BRANCH".padEnd(maxBranch))}  ${theme.style.header("PATH".padEnd(maxPath))}  STATUS`
     );
 
     // Print worktrees
     for (const wt of worktrees) {
-        const status = wt.isMain ? `${theme.style.success("*")} main` : "";
+        const statuses: string[] = [];
+        if (wt.isCurrent) statuses.push(`${theme.style.success("*")}`);
+        if (wt.isMain) statuses.push("main");
+
+        const statusStr = statuses.join(" ");
+
         console.log(
-            `${wt.path.padEnd(maxPath)}  ${theme.style.accent(wt.branch.padEnd(maxBranch))}  ${status}`
+            `${theme.style.accent(wt.branch.padEnd(maxBranch))}  ${wt.path.padEnd(maxPath)}  ${statusStr}`
         );
     }
 }
