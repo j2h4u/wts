@@ -34,6 +34,10 @@ CLI for managing git worktrees — keeps all worktrees as siblings in one folder
 - Commits and PRs in English
 - [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
 - Atomic Commits: complete feature + docs = one commit
+- **Commit scopes**:
+  - `spec` — proposals, tasks, spec deltas (e.g., `docs(spec): add clone command proposal`)
+  - `openspec` — OpenSpec tooling/infra (e.g., `chore(openspec): update workflows`)
+  - `cli`, `clone`, `worktree` — feature-specific (e.g., `feat(clone): implement wts clone`)
 
 ### OpenSpec Tasks
 
