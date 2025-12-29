@@ -36,9 +36,17 @@ function error(message: string): never {
     process.exit(1);
 }
 
+const DEBUG = process.env.DEBUG === "true" || process.env.DEBUG === "1";
+
 /** Yellow warning to stderr */
 function warn(message: string): void {
     console.error(`${YELLOW}WARNING:${NC} ${message}`);
+}
+
+function debug(message: string): void {
+    if (DEBUG) {
+        console.error(`${CYAN}[DEBUG]${NC} ${message}`);
+    }
 }
 
 // ============================================================================
@@ -52,25 +60,31 @@ function branchToDir(branch: string): string {
 
 /** Find worktree home by searching for parent with .git/ directory */
 async function findWorktreeHome(startPath: string): Promise<string | null> {
+    const { stat, readFile } = await import("node:fs/promises");
+
     let current = startPath;
+    debug(`Searching for worktree home starting from: ${current}`);
 
-    while (current !== "/") {
+    while (current !== "/" && current !== "") {
         const gitPath = `${current}/.git`;
-        const stat = await Bun.file(gitPath).exists();
+        debug(`Checking ${gitPath}`);
 
-        if (stat) {
-            // Check if .git is a directory (main worktree) not a file (feature worktree)
-            const file = Bun.file(gitPath);
-            try {
-                // If we can read it as text, it's a file (worktree pointer)
-                await file.text();
-                // It's a file, keep searching up
-            } catch {
-                // Can't read as text = it's a directory = we found main worktree
-                // Return parent of this directory (worktree home)
+        try {
+            const stats = await stat(gitPath);
+
+            if (stats.isDirectory()) {
+                // It's a directory = main worktree
+                debug(`Found .git directory at ${gitPath} (main worktree)`);
                 const parentDir = current.split("/").slice(0, -1).join("/");
                 return parentDir || "/";
+            } else if (stats.isFile()) {
+                // It's a file = feature worktree
+                // Verify we can read it (sanity check)
+                await readFile(gitPath, "utf-8");
+                debug(`Found .git file at ${gitPath} (feature worktree), continuing up`);
             }
+        } catch {
+            // Not found or not accessible
         }
 
         current = current.split("/").slice(0, -1).join("/") || "/";
