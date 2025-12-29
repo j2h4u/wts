@@ -1,0 +1,131 @@
+# worktree Specification
+
+## Purpose
+TBD - created by archiving change add-new-command. Update Purpose after archive.
+## Requirements
+### Requirement: Create Feature Worktree
+
+The `wts new` command SHALL create a new branch and worktree as sibling of main.
+
+#### Scenario: Create worktree with new branch
+
+- **WHEN** user runs `wts new feature/xyz` from worktree home
+- **THEN** directory `feature__xyz/` is created as sibling of main
+- **AND** new branch `feature/xyz` is created
+- **AND** worktree is checked out to that branch
+
+#### Scenario: Custom directory name
+
+- **WHEN** user runs `wts new feature/xyz my-feature`
+- **THEN** directory `my-feature/` is created
+- **AND** branch name remains `feature/xyz`
+
+### Requirement: Environment Setup
+
+The new command SHALL set up the development environment in the new worktree.
+
+#### Scenario: Copy environment file
+
+- **WHEN** main worktree has `.env.local`
+- **THEN** it is copied to new worktree
+
+#### Scenario: Install dependencies
+
+- **WHEN** worktree is created
+- **THEN** `bun install --frozen-lockfile` is executed
+
+### Requirement: Branch Validation
+
+The new command SHALL prevent creating duplicate branches.
+
+#### Scenario: Local branch exists
+
+- **WHEN** branch already exists locally
+- **THEN** error message is displayed
+- **AND** no worktree is created
+
+#### Scenario: Remote branch exists
+
+- **WHEN** branch exists on remote
+- **THEN** error message is displayed
+- **AND** no worktree is created
+
+### Requirement: Remove Feature Worktree
+
+The `wts done` command SHALL safely remove a worktree and its associated branch.
+
+#### Scenario: Remove worktree and branch
+
+- **WHEN** user runs `wts done feature__xyz`
+- **THEN** worktree is removed
+- **AND** local branch `feature/xyz` is deleted
+- **AND** remote-tracking branches are pruned
+
+#### Scenario: Prevent main removal
+
+- **WHEN** user runs `wts done main`
+- **THEN** error message is displayed
+- **AND** nothing is removed
+
+### Requirement: Uncommitted Changes Check
+
+The done command SHALL warn about uncommitted changes before removal.
+
+#### Scenario: Clean worktree
+
+- **WHEN** worktree has no uncommitted changes
+- **THEN** removal proceeds without prompt
+
+#### Scenario: Dirty worktree
+
+- **WHEN** worktree has uncommitted changes
+- **THEN** warning is displayed
+- **AND** user is prompted for confirmation
+- **AND** removal proceeds only if confirmed
+
+### Requirement: Environment File Check
+
+The done command SHALL compare `.env.local` with main before removal.
+
+#### Scenario: Environment differs from main
+
+- **WHEN** worktree `.env.local` differs from main
+- **THEN** diff is displayed
+- **AND** user is prompted for confirmation
+
+### Requirement: Post-Removal Sync
+
+The done command SHALL sync main branch after removal.
+
+#### Scenario: Sync after removal
+
+- **WHEN** worktree is successfully removed
+- **THEN** `git fetch --prune` is executed
+- **AND** `git pull --ff-only` updates main
+- **AND** `bun install` syncs dependencies
+
+### Requirement: List Worktrees
+
+The `wts list` command SHALL display all worktrees in the current worktree home.
+
+#### Scenario: List all worktrees
+
+- **WHEN** user runs `wts list` from within worktree home
+- **THEN** all worktrees are displayed
+- **AND** each entry shows relative path and branch name
+
+#### Scenario: Main worktree indicated
+
+- **WHEN** listing worktrees
+- **THEN** main worktree is marked with indicator (e.g., `*` or `[main]`)
+
+### Requirement: Context Validation
+
+The list command SHALL validate it is run from within a worktree home.
+
+#### Scenario: Outside worktree home
+
+- **WHEN** user runs `wts list` outside worktree home
+- **THEN** error message is displayed
+- **AND** hint suggests running from correct location
+
