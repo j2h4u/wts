@@ -51,7 +51,7 @@ async function runWithSpinner<T>(message: string, task: (spinner: Ora) => Promis
         const result = await task(spinner);
         if (spinner.isSpinning) {
             // Docker style: Blue text on completion
-            spinner.stopAndPersist({ symbol: pc.blue("✔"), text: pc.blue(spinner.text) });
+            spinner.stopAndPersist({ symbol: pc.blueBright("✔"), text: pc.bgBlueBright(spinner.text) });
         }
         return result;
     } catch (e) {
@@ -338,7 +338,7 @@ async function cmdNew(args: string[]): Promise<void> {
     }
 
     // Update main branch first
-    await runWithSpinner("Updating main branch...", async (spinner) => {
+    await runWithSpinner(`Updating main branch ${pc.italic("(git pull --ff-only)")}...`, async (spinner) => {
         try {
             await runSilent($`git pull --ff-only`.cwd(mainWorktree!));
             spinner.succeed();
@@ -348,7 +348,7 @@ async function cmdNew(args: string[]): Promise<void> {
     });
 
     // Create worktree with new branch
-    await runWithSpinner(`Creating worktree at ${pc.cyan(targetDirName)}`, async (spinner) => {
+    await runWithSpinner(`Creating worktree ${pc.italic("(git worktree add)")} at ${pc.cyan(targetDirName)}`, async (spinner) => {
         try {
             await runSilent($`git worktree add ${targetPath} -b ${branch}`.cwd(mainWorktree!));
             spinner.text = `Worktree created at ${pc.cyan(targetDirName)}`;
@@ -361,7 +361,7 @@ async function cmdNew(args: string[]): Promise<void> {
 
     // Publish branch to remote
     if (!noPublish) {
-        await runWithSpinner("Publishing branch to remote", async (spinner) => {
+        await runWithSpinner(`Publishing branch to remote ${pc.italic("(git push)")}...`, async (spinner) => {
             try {
                 await runSilent($`git push --set-upstream origin ${branch}`.cwd(targetPath));
                 spinner.succeed();
@@ -536,7 +536,7 @@ async function cmdDone(args: string[]): Promise<void> {
     }
 
     // 3. Remove worktree
-    await runWithSpinner("Removing worktree", async (spinner) => {
+    await runWithSpinner(`Removing worktree ${pc.italic("(git worktree remove)")}...`, async (spinner) => {
         try {
             await runSilent($`git worktree remove ${targetPath}`.cwd(mainWorktree!));
             spinner.succeed();
@@ -548,7 +548,7 @@ async function cmdDone(args: string[]): Promise<void> {
 
     // 4. Delete local branch
     if (branchName) {
-        await runWithSpinner(`Deleting local branch: ${pc.cyan(branchName)}`, async (spinner) => {
+        await runWithSpinner(`Deleting local branch ${pc.italic("(git branch -D)")} ${pc.cyan(branchName)}`, async (spinner) => {
             try {
                 await runSilent($`git branch -D ${branchName}`.cwd(mainWorktree!));
                 spinner.text = `Deleted branch ${pc.cyan(branchName)}`;
@@ -562,7 +562,7 @@ async function cmdDone(args: string[]): Promise<void> {
     logger.success("Worktree and branch removed");
 
     // 5. Cleanup & Sync
-    await runWithSpinner("Syncing with remote", async (spinner) => {
+    await runWithSpinner(`Syncing with remote ${pc.italic("(git fetch/pull)")}...`, async (spinner) => {
         try {
             await runSilent($`git fetch --prune`.cwd(mainWorktree!));
             await runSilent($`git pull --ff-only`.cwd(mainWorktree!));
@@ -575,7 +575,7 @@ async function cmdDone(args: string[]): Promise<void> {
 
     const hasPackageJson = await fileExists(`${mainWorktree!}/package.json`);
     if (hasPackageJson) {
-        await runWithSpinner("Syncing dependencies", async (spinner) => {
+        await runWithSpinner(`Syncing dependencies ${pc.italic("(bun install)")}...`, async (spinner) => {
             try {
                 await runSilent($`bun install --frozen-lockfile`.cwd(mainWorktree!));
                 spinner.succeed();
