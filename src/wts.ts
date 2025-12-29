@@ -237,6 +237,7 @@ ${theme.style.header("COMMANDS:")}
   new <branch> [dir]  Create feature worktree
   done <dir>          Remove worktree and branch
   list                Show all worktrees
+  usage               Show agent-optimized usage scenarios
 
 ${theme.style.header("OPTIONS:")}
   --force, -f         Force operation (e.g. delete with uncommitted changes)
@@ -256,6 +257,21 @@ function showHelp(): void {
 
 function showVersion(): void {
     console.log(`wts v${VERSION}`);
+}
+
+async function cmdUsage(_args: string[]): Promise<void> {
+    const scenarios = [
+        ["First time setup", "wts clone <url>"],
+        ["New feature branch", "wts new feature/xyz"],
+        ["Cleanup finished", "wts done feature__xyz"],
+        ["Cleanup force", "wts done feature__xyz -f"],
+        ["Check status", "wts list"]
+    ];
+
+    console.log(theme.style.header("SCENARIOS:"));
+    for (const [label, cmd] of scenarios) {
+        console.log(`  ${(label + ":").padEnd(20)} ${cmd}`);
+    }
 }
 
 async function cmdClone(args: string[]): Promise<void> {
@@ -798,6 +814,9 @@ async function main(): Promise<void> {
             break;
         case "list":
             await cmdList(commandArgs);
+            break;
+        case "usage":
+            await cmdUsage(commandArgs);
             break;
         default:
             logger.error(`Unknown command: ${command}\n\nRunning 'wts --help' for usage information.`);

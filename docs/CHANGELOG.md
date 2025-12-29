@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.0] - 2025-12-29
+
+### Added
+- **Usage Command**: Added `wts usage` command for AI agents, providing a concise scenario-based overview of available commands.
+
 ## [0.3.0] - 2025-12-29
 
 ### Added
