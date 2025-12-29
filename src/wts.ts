@@ -60,6 +60,29 @@ async function runWithSpinner<T>(message: string, task: (spinner: Ora) => Promis
     }
 }
 
+/**
+ * Run a shell command and capture output.
+ * If successful, returns output.
+ * If failed, logs output to console (dimmed) and throws error.
+ */
+async function runSilent(cmd: any): Promise<string> {
+    try {
+        // quiet() on ShellPromise suppresses piping to parent stdout/stderr 
+        // but still captures it in the result object
+        const result = await cmd.quiet();
+        return result.text();
+    } catch (e: any) {
+        // 'e' from bun $ shell usually contains stdout/stderr
+        if (e.stdout || e.stderr) {
+            console.error(pc.dim("--- Command Output ---"));
+            if (e.stdout) console.error(pc.dim(e.stdout.toString().trim()));
+            if (e.stderr) console.error(pc.dim(e.stderr.toString().trim()));
+            console.error(pc.dim("----------------------"));
+        }
+        throw e;
+    }
+}
+
 // ============================================================================
 // Path Utilities
 // ============================================================================
@@ -315,7 +338,7 @@ async function cmdNew(args: string[]): Promise<void> {
     // Update main branch first
     await runWithSpinner("Updating main branch...", async (spinner) => {
         try {
-            await $`git pull --ff-only`.cwd(mainWorktree!).quiet();
+            await runSilent($`git pull --ff-only`.cwd(mainWorktree!));
             spinner.succeed();
         } catch (e) {
             spinner.warn("Could not update main branch. Continuing anyway.");
@@ -325,10 +348,11 @@ async function cmdNew(args: string[]): Promise<void> {
     // Create worktree with new branch
     await runWithSpinner(`Creating worktree at ${pc.cyan(targetDirName)}`, async (spinner) => {
         try {
-            await $`git worktree add ${targetPath} -b ${branch}`.cwd(mainWorktree!).quiet();
-            spinner.succeed();
+            await runSilent($`git worktree add ${targetPath} -b ${branch}`.cwd(mainWorktree!));
+            spinner.text = `Worktree created at ${pc.cyan(targetDirName)}`;
         } catch (e) {
             spinner.fail("Failed to create worktree");
+            // The runSilent helper already printed detailed output
             logger.error(`Failed to create worktree: ${e}`);
         }
     });
@@ -337,7 +361,7 @@ async function cmdNew(args: string[]): Promise<void> {
     if (!noPublish) {
         await runWithSpinner("Publishing branch to remote", async (spinner) => {
             try {
-                await $`git push --set-upstream origin ${branch}`.cwd(targetPath).quiet();
+                await runSilent($`git push --set-upstream origin ${branch}`.cwd(targetPath));
                 spinner.succeed();
             } catch (e) {
                 spinner.warn("Could not publish branch (check remote permissions).");
@@ -397,10 +421,6 @@ async function cmdDone(args: string[]): Promise<void> {
 
     const targetDir = positionalArgs[0];
 
-    if (!targetDir) {
-        logger.error("Usage: wts done <dir> [--force]\n\nExample: wts done feature__my-feature");
-    }
-
     // Find worktree home
     const cwd = process.cwd();
     const worktreeHome = await findWorktreeHome(cwd);
@@ -409,16 +429,33 @@ async function cmdDone(args: string[]): Promise<void> {
         logger.error("Not inside a worktree home. Run from a wts-managed repository.");
     }
 
-    const { stat, readFile, access } = await import("node:fs/promises");
+    // Determine target path
+    // If explicit arg provided, use it. Otherwise use CWD.
+    let targetPath: string = "";
 
-    // Resolve target path (handle absolute or relative)
-    const targetPath = targetDir.startsWith("/")
-        ? targetDir
-        : `${worktreeHome}/${targetDir}`;
+    if (targetDir) {
+        targetPath = targetDir.startsWith("/")
+            ? targetDir
+            : `${worktreeHome}/${targetDir}`;
+    } else {
+        // Infer from CWD
+        // We need to ensure CWD is actually a worktree root or inside one
+        // simple approach: use CWD. isMainWorktree check later will prevent deleting main.
+        // We might need to find the root of the current worktree if we are in a subdir.
+        try {
+            // This git command finds the root of the current repository/worktree
+            targetPath = await $`git rev-parse --show-toplevel`.cwd(cwd).text();
+            targetPath = targetPath.trim();
+        } catch {
+            logger.error("Usage: wts done [dir] [--force]\n\nExample: wts done feature__my-feature");
+        }
+    }
+
+    const { stat, readFile, access } = await import("node:fs/promises");
 
     const relPath = targetPath.startsWith(worktreeHome!)
         ? targetPath.slice(worktreeHome!.length + 1)
-        : targetDir;
+        : targetPath;
 
     // 1. Safety Checks
     try {
