@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.5.0] - 2025-12-29
+
+### Added
+- **Remote Branch Tracking**: `wts new` now detects branches that exist on the remote and offers to track them automatically in interactive sessions.
+
 ## [0.4.0] - 2025-12-29
 
 ### Added

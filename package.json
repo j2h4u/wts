@@ -1,6 +1,6 @@
 {
     "name": "wts",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "description": "Worktree Siblings — CLI for managing git worktrees with sibling layout",
     "type": "module",
     "bin": {

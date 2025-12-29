@@ -9,6 +9,7 @@
 import { $ } from "bun";
 import ora, { type Ora } from "ora";
 import pc from "picocolors";
+import readline from "node:readline/promises";
 
 // ============================================================================
 // Theme & Styling
@@ -65,6 +66,22 @@ const CONFIG = {
 // ============================================================================
 
 const DEBUG = process.env.DEBUG === "true" || process.env.DEBUG === "1";
+
+const isInteractive = () => process.stdin.isTTY;
+
+async function confirm(message: string): Promise<boolean> {
+    if (!isInteractive()) return false;
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+    try {
+        const answer = await rl.question(`${theme.style.header(message)} ${theme.style.debug("(y/N)")} `);
+        return answer.toLowerCase() === "y" || answer.toLowerCase() === "yes";
+    } finally {
+        rl.close();
+    }
+}
 
 const logger = {
     info(message: string) {
@@ -373,6 +390,8 @@ async function cmdNew(args: string[]): Promise<void> {
 
     logger.info(`Creating worktree for branch: ${theme.style.accent(branch)}`);
 
+    let isRemote = false;
+
     // Check if branch already exists locally
     try {
         await $`git show-ref --verify refs/heads/${branch}`.cwd(mainWorktree!).quiet();
@@ -384,7 +403,16 @@ async function cmdNew(args: string[]): Promise<void> {
     // Check if branch exists on remote
     try {
         await $`git show-ref --verify refs/remotes/origin/${branch}`.cwd(mainWorktree!).quiet();
-        logger.error(`Branch '${branch}' already exists on remote.`);
+        if (isInteractive()) {
+            const track = await confirm(`Branch '${branch}' exists on remote. Track it?`);
+            if (track) {
+                isRemote = true;
+            } else {
+                logger.error(`Branch '${branch}' already exists on remote.`);
+            }
+        } else {
+            logger.error(`Branch '${branch}' already exists on remote.`);
+        }
     } catch {
         // Branch doesn't exist on remote - good
     }
@@ -412,10 +440,13 @@ async function cmdNew(args: string[]): Promise<void> {
         }
     });
 
-    // Create worktree with new branch
-    await runWithSpinner(`Creating worktree ${theme.style.command("(git worktree add)")} at ${theme.style.accent(targetDirName)}`, async (spinner) => {
+    // Create worktree with branch
+    await runWithSpinner(`Creating worktree ${theme.style.command(isRemote ? "(git worktree add)" : "(git worktree add -b)")} at ${theme.style.accent(targetDirName)}`, async (spinner) => {
         try {
-            await runSilent($`git worktree add ${targetPath} -b ${branch}`.cwd(mainWorktree!));
+            const gitCmd = isRemote
+                ? $`git worktree add ${targetPath} ${branch}`
+                : $`git worktree add ${targetPath} -b ${branch}`;
+            await runSilent(gitCmd.cwd(mainWorktree!));
             spinner.text = `Worktree created at ${theme.style.accent(targetDirName)}`;
         } catch (e) {
             spinner.fail("Failed to create worktree");
