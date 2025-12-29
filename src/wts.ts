@@ -150,7 +150,8 @@ async function hasUncommittedChanges(cwd?: string): Promise<boolean> {
 // CLI Router
 // ============================================================================
 
-const VERSION = "0.1.0";
+import packageJson from "../package.json";
+const VERSION = packageJson.version;
 
 const HELP = `${pc.bold("wts")} — Worktree Siblings (v${VERSION})
 
