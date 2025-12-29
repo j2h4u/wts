@@ -588,12 +588,21 @@ async function cmdDone(args: string[]): Promise<void> {
             await runSilent($`git pull --ff-only`.cwd(mainWorktree!));
             spinner.succeed();
         } catch (e) {
-            spinner.warn("Failed to sync main branch.");
-            logger.error(`${e}`); // Show error details
         }
     });
 
-
+    const hasPackageJson = await fileExists(`${mainWorktree!}/package.json`);
+    if (hasPackageJson) {
+        await runWithSpinner(`Syncing dependencies ${pc.italic("(bun install)")}...`, async (spinner) => {
+            try {
+                await runSilent($`bun install --frozen-lockfile`.cwd(mainWorktree!));
+                spinner.succeed();
+            } catch (e) {
+                spinner.warn("Failed to install dependencies.");
+                logger.error(`${e}`);
+            }
+        });
+    }
 }
 
 async function cmdList(_args: string[]): Promise<void> {
