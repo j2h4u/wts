@@ -11,6 +11,34 @@ import ora, { type Ora } from "ora";
 import pc from "picocolors";
 
 // ============================================================================
+// Theme & Styling
+// ============================================================================
+
+const theme = {
+    /** Semantic Styles (Formatters) */
+    style: {
+        error: (s: string) => pc.red(s),
+        warn: (s: string) => pc.yellow(s),
+        success: (s: string) => pc.green(s),
+        info: (s: string) => pc.blue(s),
+        debug: (s: string) => pc.dim(s),
+
+        accent: (s: string) => pc.cyan(s),      // Directories, branches
+        command: (s: string) => pc.italic(s),   // Shell commands
+        header: (s: string) => pc.bold(s),      // UI Headers
+    },
+
+    /** Symbols (Iconography) */
+    icon: {
+        success: pc.green("✔"),
+        error: pc.red("ERROR:"),
+        warn: pc.yellow("WARNING:"),
+        info: pc.blue("==>"),
+        bullet: pc.dim("-"),
+    }
+};
+
+// ============================================================================
 // Configuration
 // ============================================================================
 
@@ -40,25 +68,25 @@ const DEBUG = process.env.DEBUG === "true" || process.env.DEBUG === "1";
 
 const logger = {
     info(message: string) {
-        console.log(`${pc.blue("==>")} ${pc.bold(message)}`);
+        console.log(`${theme.icon.info} ${theme.style.header(message)}`);
     },
     success(message: string) {
-        console.log(`${pc.green("✓")} ${message}`);
+        console.log(`${theme.icon.success} ${message}`);
     },
     error(message: string): never {
-        console.error(`${pc.red("ERROR:")} ${message}`);
+        console.error(`${theme.icon.error} ${message}`);
         process.exit(1);
     },
     warn(message: string) {
-        console.error(`${pc.yellow("WARNING:")} ${message}`);
+        console.error(`${theme.icon.warn} ${message}`);
     },
     debug(message: string) {
         if (DEBUG) {
-            console.error(`${pc.dim("[DEBUG]")} ${pc.dim(message)}`);
+            console.error(`${theme.style.debug("[DEBUG]")} ${theme.style.debug(message)}`);
         }
     },
     dim(message: string) {
-        console.log(pc.gray(message));
+        console.log(theme.style.debug(message));
     }
 };
 
@@ -72,12 +100,11 @@ async function runWithSpinner<T>(message: string, task: (spinner: Ora) => Promis
     try {
         const result = await task(spinner);
         if (spinner.isSpinning) {
-            // Docker style: Blue text on completion
-            spinner.stopAndPersist({ symbol: pc.blueBright("✔"), text: pc.blueBright(spinner.text) });
+            spinner.stopAndPersist({ symbol: theme.icon.success, text: spinner.text });
         }
         return result;
     } catch (e) {
-        spinner.fail(pc.red("Operation failed"));
+        spinner.fail(theme.style.error("Operation failed"));
         throw e;
     }
 }
@@ -96,10 +123,10 @@ async function runSilent(cmd: any): Promise<string> {
     } catch (e: any) {
         // 'e' from bun $ shell usually contains stdout/stderr
         if (e.stdout || e.stderr) {
-            console.error(pc.dim("--- Command Output ---"));
-            if (e.stdout) console.error(pc.dim(e.stdout.toString().trim()));
-            if (e.stderr) console.error(pc.dim(e.stderr.toString().trim()));
-            console.error(pc.dim("----------------------"));
+            console.error(theme.style.debug("--- Command Output ---"));
+            if (e.stdout) console.error(theme.style.debug(e.stdout.toString().trim()));
+            if (e.stderr) console.error(theme.style.debug(e.stderr.toString().trim()));
+            console.error(theme.style.debug("----------------------"));
         }
         throw e;
     }
@@ -200,23 +227,23 @@ async function hasUncommittedChanges(cwd?: string): Promise<boolean> {
 import packageJson from "../package.json";
 const VERSION = packageJson.version;
 
-const HELP = `${pc.bold("wts")} — Worktree Siblings (v${VERSION})
+const HELP = `${theme.style.header("wts")} — Worktree Siblings (v${VERSION})
 
-${pc.bold("USAGE:")}
+${theme.style.header("USAGE:")}
   wts <command> [options]
 
-${pc.bold("COMMANDS:")}
+${theme.style.header("COMMANDS:")}
   clone <url> [dir]   Clone repo with worktrees as siblings
   new <branch> [dir]  Create feature worktree
   done <dir>          Remove worktree and branch
   list                Show all worktrees
 
-${pc.bold("OPTIONS:")}
+${theme.style.header("OPTIONS:")}
   --force, -f         Force operation (e.g. delete with uncommitted changes)
   --help, -h          Show this help message
   --version, -v       Show version
 
-${pc.bold("EXAMPLES:")}
+${theme.style.header("EXAMPLES:")}
   wts clone git@github.com:user/repo.git
   wts new feature/xyz
   wts done feature__xyz --force
@@ -256,8 +283,8 @@ async function cmdClone(args: string[]): Promise<void> {
     const cwd = process.cwd();
     const worktreeHomePath = `${cwd}/${worktreeHomeName}`;
 
-    logger.info(`Cloning ${pc.cyan(url)}`);
-    logger.info(`Target:  ${pc.cyan(worktreeHomeName)}`);
+    logger.info(`Cloning ${theme.style.accent(url)}`);
+    logger.info(`Target:  ${theme.style.accent(worktreeHomeName)}`);
 
     // Check if directory exists
     const { access, mkdir, rm } = await import("node:fs/promises");
@@ -275,18 +302,18 @@ async function cmdClone(args: string[]): Promise<void> {
         // 4. Detect default branch
         const defaultBranch = await runWithSpinner("Detecting default branch...", async (spinner) => {
             const branch = await getDefaultBranch(url);
-            spinner.succeed(`Default branch: ${pc.cyan(branch)}`);
+            spinner.succeed(`Default branch: ${theme.style.accent(branch)}`);
             return branch;
         });
 
         // 5. Clone into subdirectory
         const clonePath = `${worktreeHomePath}/${defaultBranch}`;
-        await runWithSpinner(`Cloning into ${pc.cyan(defaultBranch)}`, async (spinner) => {
+        await runWithSpinner(`Cloning into ${theme.style.accent(defaultBranch)}`, async (spinner) => {
             await $`git clone ${url} ${clonePath}`.quiet();
             spinner.succeed();
         });
 
-        logger.success(`Repository cloned: ${pc.cyan(worktreeHomeName)}`);
+        logger.success(`Repository cloned: ${theme.style.accent(worktreeHomeName)}`);
         console.error("");
         logger.dim("Next steps:");
         logger.dim(`  cd ${worktreeHomeName}/${defaultBranch}`);
@@ -328,7 +355,7 @@ async function cmdNew(args: string[]): Promise<void> {
         logger.error("Could not find main worktree with .git directory.");
     }
 
-    logger.info(`Creating worktree for branch: ${pc.cyan(branch)}`);
+    logger.info(`Creating worktree for branch: ${theme.style.accent(branch)}`);
 
     // Check if branch already exists locally
     try {
@@ -360,7 +387,7 @@ async function cmdNew(args: string[]): Promise<void> {
     }
 
     // Update main branch first
-    await runWithSpinner(`Updating main branch ${pc.italic("(git pull --ff-only)")}...`, async (spinner) => {
+    await runWithSpinner(`Updating main branch ${theme.style.command("(git pull --ff-only)")}...`, async (spinner) => {
         try {
             await runSilent($`git pull --ff-only`.cwd(mainWorktree!));
             spinner.succeed();
@@ -370,10 +397,10 @@ async function cmdNew(args: string[]): Promise<void> {
     });
 
     // Create worktree with new branch
-    await runWithSpinner(`Creating worktree ${pc.italic("(git worktree add)")} at ${pc.cyan(targetDirName)}`, async (spinner) => {
+    await runWithSpinner(`Creating worktree ${theme.style.command("(git worktree add)")} at ${theme.style.accent(targetDirName)}`, async (spinner) => {
         try {
             await runSilent($`git worktree add ${targetPath} -b ${branch}`.cwd(mainWorktree!));
-            spinner.text = `Worktree created at ${pc.cyan(targetDirName)}`;
+            spinner.text = `Worktree created at ${theme.style.accent(targetDirName)}`;
         } catch (e) {
             spinner.fail("Failed to create worktree");
             // The runSilent helper already printed detailed output
@@ -383,7 +410,7 @@ async function cmdNew(args: string[]): Promise<void> {
 
     // Publish branch to remote
     if (!noPublish) {
-        await runWithSpinner(`Publishing branch to remote ${pc.italic("(git push)")}...`, async (spinner) => {
+        await runWithSpinner(`Publishing branch to remote ${theme.style.command("(git push)")}...`, async (spinner) => {
             try {
                 await runSilent($`git push --set-upstream origin ${branch}`.cwd(targetPath));
                 spinner.succeed();
@@ -525,7 +552,7 @@ async function cmdDone(args: string[]): Promise<void> {
         logger.error("Cannot remove 'main' worktree!");
     }
 
-    logger.info(`Target: ${pc.cyan(relPath)}`);
+    logger.info(`Target: ${theme.style.accent(relPath)}`);
 
     // Check for uncommitted changes
     if (await hasUncommittedChanges(targetPath)) {
@@ -578,7 +605,7 @@ async function cmdDone(args: string[]): Promise<void> {
     }
 
     // 3. Remove worktree
-    await runWithSpinner(`Removing worktree ${pc.italic("(git worktree remove)")}...`, async (spinner) => {
+    await runWithSpinner(`Removing worktree ${theme.style.command("(git worktree remove)")}...`, async (spinner) => {
         try {
             await runSilent($`git worktree remove ${targetPath}`.cwd(mainWorktree!));
             spinner.succeed();
@@ -590,10 +617,10 @@ async function cmdDone(args: string[]): Promise<void> {
 
     // 4. Delete local branch
     if (branchName) {
-        await runWithSpinner(`Deleting local branch ${pc.italic("(git branch -D)")} ${pc.cyan(branchName)}`, async (spinner) => {
+        await runWithSpinner(`Deleting local branch ${theme.style.command("(git branch -D)")} ${theme.style.accent(branchName)}`, async (spinner) => {
             try {
                 await runSilent($`git branch -D ${branchName}`.cwd(mainWorktree!));
-                spinner.text = `Deleted branch ${pc.cyan(branchName)}`;
+                spinner.text = `Deleted branch ${theme.style.accent(branchName)}`;
             } catch (e) {
                 // Warning only, as worktree is already gone
                 spinner.warn(`Failed to delete branch ${branchName}`);
@@ -604,7 +631,7 @@ async function cmdDone(args: string[]): Promise<void> {
     logger.success("Worktree and branch removed");
 
     // 5. Cleanup & Sync
-    await runWithSpinner(`Syncing with remote ${pc.italic("(git fetch/pull)")}...`, async (spinner) => {
+    await runWithSpinner(`Syncing with remote ${theme.style.command("(git fetch/pull)")}...`, async (spinner) => {
         try {
             await runSilent($`git fetch --prune`.cwd(mainWorktree!));
             await runSilent($`git pull --ff-only`.cwd(mainWorktree!));
@@ -615,7 +642,7 @@ async function cmdDone(args: string[]): Promise<void> {
 
     const hasPackageJson = await fileExists(`${mainWorktree!}/${CONFIG.files.manifest}`);
     if (hasPackageJson) {
-        await runWithSpinner(`Syncing dependencies ${pc.italic(CONFIG.deps.installMsg)}...`, async (spinner) => {
+        await runWithSpinner(`Syncing dependencies ${theme.style.command(CONFIG.deps.installMsg)}...`, async (spinner) => {
             try {
                 // Split command string into executable and args for $ string template? 
                 // Bun's $ works best with template literals. 
@@ -696,14 +723,14 @@ async function cmdList(_args: string[]): Promise<void> {
 
     // Print header
     console.log(
-        `${pc.bold("PATH".padEnd(maxPath))}  ${"BRANCH".padEnd(maxBranch)}  STATUS`
+        `${theme.style.header("PATH".padEnd(maxPath))}  ${"BRANCH".padEnd(maxBranch)}  STATUS`
     );
 
     // Print worktrees
     for (const wt of worktrees) {
-        const status = wt.isMain ? `${pc.green("*")} main` : "";
+        const status = wt.isMain ? `${theme.style.success("*")} main` : "";
         console.log(
-            `${wt.path.padEnd(maxPath)}  ${pc.cyan(wt.branch.padEnd(maxBranch))}  ${status}`
+            `${wt.path.padEnd(maxPath)}  ${theme.style.accent(wt.branch.padEnd(maxBranch))}  ${status}`
         );
     }
 }
@@ -745,7 +772,7 @@ async function main(): Promise<void> {
     const commandArgs = args.slice(1);
 
     // Always print version header
-    console.error(pc.dim(`wts v${VERSION}`));
+    console.error(theme.style.debug(`wts v${VERSION}`));
 
     // Handle flags
     if (!command || command === "--help" || command === "-h") {

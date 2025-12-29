@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.0] - 2025-12-29
+
+### Added
+- **Theme System**: Centralized color and style management for consistent CLI output and easier customization.
+- **Enhanced Documentation**: The root `README.md` now contains links to all project documents, including a new "Testing Guide".
+
+### Changed
+- **Doc Restructuring**: Moved `docs/TESTING.md` to `test/README.md` to keep it closer to the test source code.
+- **CLI Consistency**: Replaced all hardcoded colors with semantic theme calls (e.g., `theme.style.accent`).
+
 ## [0.2.0] - 2025-12-29
 
 ### Added

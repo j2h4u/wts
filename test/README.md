@@ -11,20 +11,20 @@ Tests run inside a **Docker container** to provide:
 
 ## Components
 
-### 1. Docker Environment (`test/Dockerfile`)
+### 1. Docker Environment (`Dockerfile`)
 A lightweight image based on `oven/bun` that includes:
 - **Bun**: Runtime for the test script and CLI.
 - **Git**: Core dependency for `wts`.
 - **OpenSSH Client**: For cloning repositories (supports SSH agent forwarding).
 
-### 2. Test Runner (`test/run.sh`)
+### 2. Test Runner (`run.sh`)
 Helper script that:
 - Builds the Docker image (`wts-test`).
 - Mounts the SSH agent socket (if available) to allow cloning private repos.
 - Mounts the local `wts` source code into the container.
 - Executes the test suite.
 
-### 3. Test Suite (`test/e2e.ts`)
+### 3. Test Suite (`e2e.ts`)
 A Bun script that acts as a user. It:
 1.  Creates a temporary workspace (`/tmp/wts-e2e`).
 2.  Executes real `wts` commands (`clone`, `new`, `list`, `done`).

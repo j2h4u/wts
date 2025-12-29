@@ -39,7 +39,12 @@ wts list                # Show all worktrees
 
 ## Documentation
 
-See [docs/SPEC.md](docs/SPEC.md) for full specification.
+- [Specification](docs/SPEC.md) — Full design and architectural details.
+- [Testing Guide](test/README.md) — Information on E2E testing with Docker.
+- [Changelog](docs/CHANGELOG.md) — History of changes.
+- [AI Instructions](AGENTS.md) — Guidelines for AI assistants working on this repo.
+- [OpenSpec Reference](openspec/AGENTS.md) — Detailed OpenSpec workflow and CLI guide.
+- [Legacy Prototypes](legacy/README.md) — Original bash scripts (deprecated).
 
 ## Naming
 
