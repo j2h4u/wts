@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.8.0] - 2025-12-30
+
+### Changed
+- **Help Refactoring**: Merged the scenario-based `usage` command into the standard `help` output for better discoverability and less CLI noise.
+
 ## [0.7.0] - 2025-12-29
 
 ### Added
