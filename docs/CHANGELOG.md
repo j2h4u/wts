@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.0] - 2025-12-29
+
+### Added
+- **Dirty Status in List**: `wts list` now shows a `dirty` indicator for worktrees with uncommitted changes.
+- **Improved List UI**: Refactored the worktree table with swapped columns (Branch first), clearer headers, and conventional `*` indicators for the active worktree.
+
 ## [0.5.0] - 2025-12-29
 
 ### Added

@@ -109,19 +109,19 @@ The done command SHALL sync main branch after removal.
 - **AND** `bun install` syncs dependencies
 
 ### Requirement: List Worktrees
+The `wts list` command SHALL display all worktrees with their branch, path, and state.
 
-The `wts list` command SHALL display all worktrees in the current worktree home.
+#### Scenario: List worktrees with metadata
+- **WHEN** user runs `wts list`
+- **THEN** output shows columns: BRANCH, PATH, TYPE
+- **AND** the current worktree is marked with `*` on the left
+- **AND** the main worktree is labeled as `primary`
+- **AND** worktrees with uncommitted changes are labeled as `dirty`
 
-#### Scenario: List all worktrees
-
-- **WHEN** user runs `wts list` from within worktree home
-- **THEN** all worktrees are displayed
-- **AND** each entry shows relative path and branch name
-
-#### Scenario: Main worktree indicated
-
-- **WHEN** listing worktrees
-- **THEN** main worktree is marked with indicator (e.g., `*` or `[main]`)
+#### Scenario: Main worktree indicator
+- **GIVEN** I am in the main worktree
+- **WHEN** I run `wts list`
+- **THEN** the main worktree entry shows `*` and `primary`
 
 ### Requirement: Context Validation
 
